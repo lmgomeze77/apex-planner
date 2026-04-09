@@ -1,436 +1,71 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ZRC Morning Intelligence · Zenith Rise Capital</title>
-  <meta name="description" content="Geopolitical intelligence and investment advisory briefing by Zenith Rise Capital" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #060D18;
-      color: #A5B4C8;
-      font-family: 'Source Serif 4', Georgia, serif;
-      min-height: 100vh;
-      -webkit-font-smoothing: antialiased;
-    }
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #060D18; }
-    ::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.2); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(201,168,76,0.4); }
+import{useState,useEffect}from"react"
+import{Target,Calendar,CalendarDays,BarChart2,Layers,Plus,CheckCircle2,Circle,Zap,X,Sparkles,RefreshCw,Check,ChevronLeft,ChevronRight,Trash2,Edit3,GripVertical}from"lucide-react"
+import{generateBriefing,decomposeGoal}from"./lib/api.js"
+import{storage}from"./lib/storage.js"
+import{C,PRIORITY,CATS,TODAY,SAMPLE_TASKS,SAMPLE_GOALS}from"./lib/constants.js"
+import{Tag,Btn,ProgressRing,TaskEditModal,DraggableTaskRow}from"./components/Shared.jsx"
+import{WeekView,MonthView,YearView}from"./components/Calendars.jsx"
 
-    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-    @keyframes fadeSlideIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    @keyframes headerReveal { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-
-    .header {
-      border-bottom: 1px solid rgba(201,168,76,0.15);
-      padding: 28px 32px 24px;
-      animation: headerReveal 0.6s ease;
-    }
-    .header-inner { max-width: 900px; margin: 0 auto; }
-    .header-row {
-      display: flex; justify-content: space-between; align-items: flex-start;
-      flex-wrap: wrap; gap: 16px;
-    }
-    .live-dot {
-      width: 8px; height: 8px; border-radius: 50%; background: #34D399;
-      animation: pulse 2s ease infinite; box-shadow: 0 0 8px rgba(52,211,153,0.4);
-      display: inline-block; vertical-align: middle;
-    }
-    .brand-tag {
-      color: #C9A84C; font-size: 10px; font-weight: 700; letter-spacing: 3px;
-      font-family: 'JetBrains Mono', monospace; vertical-align: middle; margin-left: 12px;
-    }
-    .main-title {
-      color: #E8DCC8; font-size: 32px; font-weight: 600; margin: 6px 0 4px;
-      font-family: 'Cormorant Garamond', Georgia, serif; letter-spacing: -0.5px;
-    }
-    .sub-title {
-      color: #5A6A80; font-size: 13px;
-      font-family: 'Source Serif 4', Georgia, serif;
-    }
-    .date-block { text-align: right; }
-    .date-text {
-      color: #A5B4C8; font-size: 14px; margin-bottom: 2px;
-      font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500;
-    }
-    .time-text {
-      color: #5A6A80; font-size: 12px;
-      font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px;
-    }
-    .legend { display: flex; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
-    .legend-badge {
-      font-size: 9px; font-weight: 700; letter-spacing: 1.5px; padding: 3px 8px;
-      border-radius: 3px; font-family: 'JetBrains Mono', monospace;
-    }
-
-    main { max-width: 900px; margin: 0 auto; padding: 24px 32px 60px; }
-    .desks-header {
-      display: flex; justify-content: space-between; align-items: center;
-      margin-bottom: 20px; flex-wrap: wrap; gap: 8px;
-    }
-    .mono-label {
-      color: #5A6A80; font-size: 12px;
-      font-family: 'JetBrains Mono', monospace; letter-spacing: 1px;
-    }
-    .mono-hint {
-      color: #5A6A80; font-size: 11px;
-      font-family: 'JetBrains Mono', monospace; letter-spacing: 0.5px;
-    }
-
-    .cat-btn {
-      width: 100%; background: transparent;
-      border: 1px solid rgba(201,168,76,0.1); border-radius: 6px;
-      padding: 16px 20px; cursor: pointer; display: flex;
-      align-items: center; justify-content: space-between;
-      transition: all 0.3s ease; margin-bottom: 6px;
-    }
-    .cat-btn:hover { background: linear-gradient(90deg, rgba(201,168,76,0.06), transparent); }
-    .cat-btn.open { background: linear-gradient(90deg, rgba(201,168,76,0.08), transparent); }
-    .cat-btn-left { display: flex; align-items: center; gap: 14px; }
-    .cat-icon { font-size: 22px; }
-    .cat-label {
-      color: #E8DCC8; font-size: 15px; font-weight: 600;
-      font-family: 'Cormorant Garamond', Georgia, serif; letter-spacing: 0.3px;
-    }
-    .cat-desc {
-      color: #5A6A80; font-size: 11.5px;
-      font-family: 'Source Serif 4', Georgia, serif; margin-top: 2px;
-    }
-    .cat-count {
-      color: #C9A84C; font-size: 10px; font-weight: 700; letter-spacing: 1px;
-      font-family: 'JetBrains Mono', monospace; margin-right: 10px;
-    }
-    .cat-arrow {
-      color: #5A6A80; font-size: 18px; transition: transform 0.3s ease; display: inline-block;
-    }
-    .cat-arrow.open { transform: rotate(180deg); }
-
-    .cat-content { padding: 12px 0; animation: fadeIn 0.3s ease; }
-
-    .spinner {
-      width: 28px; height: 28px; border: 2px solid rgba(201,168,76,0.2);
-      border-top-color: #C9A84C; border-radius: 50%;
-      animation: spin 0.8s linear infinite; margin: 0 auto 12px;
-    }
-    .spinner-label {
-      color: #5A6A80; font-size: 12px; text-align: center;
-      font-family: 'JetBrains Mono', monospace; letter-spacing: 1px;
-    }
-
-    .error-box {
-      background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2);
-      border-radius: 6px; padding: 14px 18px; color: #F87171; font-size: 13px;
-    }
-
-    .news-card {
-      background: linear-gradient(135deg, rgba(15,25,45,0.95), rgba(10,18,35,0.98));
-      border: 1px solid rgba(201,168,76,0.12); border-left: 3px solid rgba(201,168,76,0.4);
-      border-radius: 6px; padding: 18px 20px; cursor: pointer;
-      transition: all 0.3s ease; margin-bottom: 8px;
-    }
-    .news-card:hover, .news-card.expanded {
-      border-left-color: rgba(201,168,76,0.8);
-      background: linear-gradient(135deg, rgba(18,30,52,0.98), rgba(12,22,42,1));
-    }
-    .news-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-    .news-headline {
-      color: #E8DCC8; font-size: 15px; font-weight: 600; line-height: 1.4;
-      font-family: 'Cormorant Garamond', Georgia, serif; flex: 1;
-    }
-    .signal-badge {
-      font-size: 10px; font-weight: 700; letter-spacing: 1.5px; padding: 3px 8px;
-      border-radius: 3px; font-family: 'JetBrains Mono', 'SF Mono', monospace;
-      white-space: nowrap; flex-shrink: 0;
-    }
-    .signal-bullish { background: #0D3B2E; color: #34D399; }
-    .signal-bearish { background: #3B1A1A; color: #F87171; }
-    .signal-neutral { background: #2A2A3A; color: #A5B4C8; }
-    .signal-watch { background: #3B2E0D; color: #FBBF24; }
-
-    .news-detail { margin-top: 12px; animation: fadeIn 0.3s ease; }
-    .news-summary {
-      color: #A5B4C8; font-size: 13.5px; line-height: 1.65; margin-bottom: 10px;
-      font-family: 'Source Serif 4', Georgia, serif;
-    }
-    .news-relevance {
-      background: rgba(201,168,76,0.06); border-radius: 4px; padding: 10px 14px;
-      margin-bottom: 8px; color: #C9A84C; font-size: 12px; font-weight: 500;
-      font-family: 'Source Serif 4', Georgia, serif;
-    }
-    .news-source {
-      color: #5A6A80; font-size: 11px;
-      font-family: 'JetBrains Mono', 'SF Mono', monospace; letter-spacing: 0.5px;
-    }
-
-    .takeaway-box {
-      margin-top: 14px;
-      background: linear-gradient(135deg, rgba(201,168,76,0.08), rgba(201,168,76,0.03));
-      border: 1px solid rgba(201,168,76,0.15); border-radius: 6px; padding: 14px 18px;
-    }
-    .takeaway-label {
-      color: #C9A84C; font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
-      margin-bottom: 6px; font-family: 'JetBrains Mono', monospace;
-    }
-    .takeaway-text {
-      color: #E8DCC8; font-size: 14px; line-height: 1.5;
-      font-family: 'Source Serif 4', Georgia, serif; font-style: italic;
-    }
-
-    footer {
-      border-top: 1px solid rgba(201,168,76,0.1); padding: 20px 32px; text-align: center;
-    }
-    .footer-brand {
-      color: #3A4555; font-size: 11px;
-      font-family: 'JetBrains Mono', monospace; letter-spacing: 1px; margin-bottom: 4px;
-    }
-    .footer-legal {
-      color: #2A3340; font-size: 10px;
-      font-family: 'Source Serif 4', Georgia, serif;
-    }
-
-    @media (max-width: 640px) {
-      .header { padding: 20px 16px 18px; }
-      main { padding: 16px 16px 40px; }
-      .main-title { font-size: 26px; }
-      .header-row { flex-direction: column; }
-      .date-block { text-align: left; }
-      .cat-btn { padding: 14px 16px; }
-      .news-card { padding: 14px 16px; }
-    }
-  </style>
-</head>
-<body>
-  <div id="app"></div>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.9/babel.min.js"></script>
-
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
-
-    const CATEGORIES = [
-      { id: "geopolitics", label: "Geopolitics & Security", icon: "\u{1F30D}", query: "major geopolitical developments conflicts international relations today 2026", description: "Conflicts, alliances, sanctions, and power shifts" },
-      { id: "fdi", label: "FDI & Capital Flows", icon: "\u{1F4B0}", query: "foreign direct investment deals cross-border capital flows sovereign wealth fund 2026", description: "Cross-border investments, sovereign wealth, and capital movements" },
-      { id: "critical-minerals", label: "Critical Minerals & Energy", icon: "\u{26A1}", query: "critical minerals cobalt lithium rare earths energy markets oil gas prices 2026", description: "Supply chains, commodity prices, and energy security" },
-      { id: "real-estate", label: "Real Estate & Infrastructure", icon: "\u{1F3D7}\u{FE0F}", query: "commercial real estate investment infrastructure deals Europe global 2026", description: "Institutional RE, infrastructure projects, and market trends" },
-      { id: "ma-growth", label: "M&A & Growth Advisory", icon: "\u{1F4CA}", query: "mergers acquisitions deals private equity venture capital growth advisory 2026", description: "Deal flow, PE/VC activity, and corporate transactions" },
-      { id: "emerging-markets", label: "Emerging Markets", icon: "\u{1F30F}", query: "emerging markets Africa Latin America Southeast Asia investment opportunities risks 2026", description: "Frontier opportunities, risk signals, and market access" },
-      { id: "trade-policy", label: "Trade & Industrial Policy", icon: "\u{1F3DB}\u{FE0F}", query: "tariffs trade policy sanctions export controls industrial policy economic security 2026", description: "Tariffs, sanctions, export controls, and economic statecraft" },
-      { id: "food-agriculture", label: "Food & Agriculture", icon: "\u{1F33E}", query: "global food security agriculture commodity prices fertilizer supply chain 2026", description: "Food security, agribusiness, and agricultural commodities" }
-    ];
-
-    const SYSTEM_PROMPT = `You are the intelligence analyst for Zenith Rise Capital (ZRC), a geopolitical intelligence and real estate investment advisory firm.
-
-Your task: Search for the most important and recent news on the given topic and produce a concise intelligence briefing.
-
-CRITICAL RULES:
-- Return ONLY valid JSON, no markdown, no backticks, no preamble
-- Focus on the last 48 hours of developments
-- Prioritize institutional-grade sources (Reuters, Bloomberg, FT, WSJ, official government sources, think tanks)
-- Each item should have genuine analytical value for an investment advisor
-- Include specific numbers, figures, and data points where available
-- Flag items with direct implications for investment decisions
-
-Return this exact JSON structure:
-{
-  "items": [
-    {
-      "headline": "Concise but specific headline",
-      "summary": "2-3 sentence analytical summary with key data points. Written in institutional tone.",
-      "source": "Source name",
-      "relevance": "One sentence on why this matters for investment advisory",
-      "signal": "bullish" | "bearish" | "neutral" | "watch"
-    }
-  ],
-  "keyTakeaway": "One sentence synthesis of the most important signal across all items"
+function Sidebar({view,setView}){
+  const nav=[{id:"today",icon:Zap,label:"Today"},{id:"week",icon:Calendar,label:"Week"},{id:"month",icon:CalendarDays,label:"Month"},{id:"year",icon:BarChart2,label:"Year"},{id:"goals",icon:Target,label:"Goals"},{id:"strategic",icon:Layers,label:"Strategic"}];
+  return(<div style={{width:54,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",alignItems:"center",padding:"12px 0",gap:2,flexShrink:0}}>
+    <div style={{width:28,height:28,borderRadius:7,background:C.gold,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:14}}><span style={{color:"#07070F",fontWeight:800,fontSize:12}}>A</span></div>
+    {nav.map(({id,icon:Icon,label})=><button key={id}onClick={()=>setView(id)}title={label}style={{width:38,height:38,borderRadius:9,border:"none",background:view===id?C.goldGlow:"transparent",color:view===id?C.gold:C.textMut,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",outline:"none",transition:"all 0.2s"}}><Icon size={17}/></button>)}
+    <div style={{flex:1}}/><div style={{width:28,height:28,borderRadius:"50%",background:C.elevated,border:`1px solid ${C.gold}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:C.gold}}>L</div>
+  </div>)
 }
 
-Return 4-6 items per query. Be specific, data-rich, and analytical.`;
+function TodayView({tasks,setTasks,goals}){
+  const[br,setBr]=useState("");const[bl,setBl]=useState(false);const[sa,setSa]=useState(false);const[nt,setNt]=useState("");const[np,setNp]=useState("HIGH");const[nc,setNc]=useState("work");const[nd,setNd]=useState(TODAY);const[editTask,setEditTask]=useState(null);
+  const ds=new Date().toLocaleDateString("en-GB",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+  const pe=tasks.filter(t=>t.status!=="done"),dn=tasks.filter(t=>t.status==="done"),pt=tasks.length?Math.round(dn.length/tasks.length*100):0;
+  const gr={CRITICAL:pe.filter(t=>t.priority==="CRITICAL"),HIGH:pe.filter(t=>t.priority==="HIGH"),NORMAL:pe.filter(t=>t.priority==="NORMAL")};
+  const brief=async()=>{setBl(true);setBr("");const tx=await generateBriefing({tasks:pe.slice(0,6).map(t=>({title:t.title,priority:t.priority})),goals:goals.map(g=>({title:g.title,progress:g.progress})),dateStr:ds});setBr(tx);setBl(false)};
+  const tog=id=>setTasks(p=>p.map(t=>t.id===id?{...t,status:t.status==="done"?"pending":"done"}:t));
+  const del=id=>setTasks(p=>p.filter(t=>t.id!==id));
+  const save=u=>setTasks(p=>p.map(t=>t.id===u.id?{...t,...u}:t));
+  const add=()=>{if(!nt.trim())return;setTasks(p=>[{id:Date.now(),title:nt,priority:np,status:"pending",category:nc,dueDate:nd},...p]);setNt("");setSa(false)};
+  return(<div style={{flex:1,overflowY:"auto",padding:24,display:"flex",flexDirection:"column",gap:18}}>
+    {editTask&&<TaskEditModal task={editTask}onSave={save}onDelete={del}onClose={()=>setEditTask(null)}/>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+      <div><div style={{fontSize:11,color:C.textMut,marginBottom:3}}>{ds}</div><h1 style={{fontSize:22,fontWeight:300,color:C.text,margin:0}}>Good morning, <span style={{color:C.gold,fontWeight:500}}>Luis</span></h1></div>
+      <div style={{textAlign:"right"}}><div style={{fontSize:26,fontWeight:200,color:C.text}}>{pt}<span style={{fontSize:13,color:C.textSec}}>%</span></div><div style={{fontSize:10,color:C.textMut}}>TODAY COMPLETE</div></div></div>
+    <div style={{height:2,background:C.border,borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:C.gold,width:`${pt}%`,transition:"width 1s"}}/></div>
+    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{display:"flex",alignItems:"center",gap:7}}><Sparkles size={13}color={C.gold}/><span style={{fontSize:10,color:C.gold,fontWeight:600,letterSpacing:"1.2px",textTransform:"uppercase"}}>AI Chief of Staff</span></div><Btn small onClick={brief}disabled={bl}><RefreshCw size={10}style={{animation:bl?"spin 1s linear infinite":"none"}}/>{bl?"Analyzing…":"Brief me"}</Btn></div>
+      <p style={{fontSize:13,color:br?C.text:C.textMut,lineHeight:1.75,margin:0,fontStyle:br?"normal":"italic"}}>{br||"Click Brief me for your AI daily intelligence."}</p></div>
+    {Object.entries(gr).map(([pri,items])=>items.length>0&&(<div key={pri}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><div style={{width:6,height:6,borderRadius:"50%",background:PRIORITY[pri].color}}/><span style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",fontWeight:600}}>{PRIORITY[pri].label}</span><span style={{fontSize:10,color:C.textMut}}>({items.length})</span></div><div style={{display:"flex",flexDirection:"column",gap:6}}>{items.map(t=><DraggableTaskRow key={t.id}task={t}onToggle={tog}onDelete={del}onEdit={setEditTask}onDragStart={e=>e.dataTransfer.setData("taskId",String(t.id))}/>)}</div></div>))}
+    {dn.length>0&&(<div><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><CheckCircle2 size={11}color={C.green}/><span style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",fontWeight:600}}>Completed ({dn.length})</span></div><div style={{display:"flex",flexDirection:"column",gap:6}}>{dn.map(t=><DraggableTaskRow key={t.id}task={t}onToggle={tog}onDelete={del}onEdit={setEditTask}onDragStart={e=>e.dataTransfer.setData("taskId",String(t.id))}/>)}</div></div>)}
+    {sa?(<div style={{background:C.card,border:`1px solid ${C.borderHi}`,borderRadius:10,padding:14,display:"flex",flexDirection:"column",gap:10}}>
+      <input value={nt}onChange={e=>setNt(e.target.value)}onKeyDown={e=>e.key==="Enter"&&add()}autoFocus placeholder="Task description…"style={{background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"inherit"}}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+        <div><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:5}}>Priority</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{["CRITICAL","HIGH","NORMAL"].map(p=><button key={p}onClick={()=>setNp(p)}style={{padding:"4px 8px",borderRadius:5,fontSize:10,cursor:"pointer",fontWeight:600,textAlign:"left",border:`1px solid ${np===p?PRIORITY[p].color:C.border}`,background:np===p?PRIORITY[p].color+"18":"transparent",color:np===p?PRIORITY[p].color:C.textMut,fontFamily:"inherit"}}>{PRIORITY[p].label}</button>)}</div></div>
+        <div><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:5}}>Category</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{Object.entries(CATS).slice(0,5).map(([k,v])=><button key={k}onClick={()=>setNc(k)}style={{padding:"4px 8px",borderRadius:5,fontSize:10,cursor:"pointer",textAlign:"left",border:`1px solid ${nc===k?v.color:C.border}`,background:nc===k?v.color+"18":"transparent",color:nc===k?v.color:C.textMut,fontFamily:"inherit"}}>{v.label}</button>)}</div></div></div>
+      <div><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:5}}>Due Date</div><input type="date"value={nd}onChange={e=>setNd(e.target.value)}style={{width:"100%",background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 10px",fontSize:12,color:C.text,outline:"none",fontFamily:"inherit"}}/></div>
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8}}><Btn onClick={()=>setSa(false)}>Cancel</Btn><Btn gold onClick={add}><Plus size={12}/>Add Task</Btn></div>
+    </div>):(<button onClick={()=>setSa(true)}style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"transparent",border:`1px dashed ${C.border}`,borderRadius:8,color:C.textMut,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}><Plus size={15}/>Add task…</button>)}
+  </div>)
+}
 
-    function SignalBadge({ signal }) {
-      const cls = "signal-badge signal-" + (signal || "neutral");
-      const labels = { bullish: "BULLISH", bearish: "BEARISH", neutral: "NEUTRAL", watch: "WATCH" };
-      return <span className={cls}>{labels[signal] || "NEUTRAL"}</span>;
-    }
+function GoalsView({goals,setGoals}){
+  const[sn,setSn]=useState(false);const[form,setForm]=useState({title:"",category:"financial",deadline:"",vision:""});const[al,setAl]=useState(null);const[exp,setExp]=useState(null);
+  const dc=async(goal)=>{setAl(goal.id);const ms=await decomposeGoal({goal});if(ms.length)setGoals(p=>p.map(g=>g.id===goal.id?{...g,milestones:ms}:g));setAl(null)};
+  const cr=async()=>{if(!form.title||!form.deadline)return;const g={id:Date.now(),...form,progress:0,color:CATS[form.category]?.color||C.gold,milestones:[]};setGoals(p=>[...p,g]);setSn(false);setForm({title:"",category:"financial",deadline:"",vision:""});setTimeout(()=>dc(g),100)};
+  const tm=(gid,mid)=>setGoals(p=>p.map(g=>{if(g.id!==gid)return g;const ms=g.milestones.map(m=>m.id===mid?{...m,done:!m.done}:m);return{...g,milestones:ms,progress:ms.length?Math.round(ms.filter(m=>m.done).length/ms.length*100):0}}));
+  return(<div style={{flex:1,overflowY:"auto",padding:24,display:"flex",flexDirection:"column",gap:20}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><h2 style={{fontSize:20,fontWeight:400,color:C.text,margin:0}}>Goals</h2><p style={{fontSize:12,color:C.textSec,margin:"3px 0 0"}}>{goals.length} active · avg {Math.round(goals.reduce((a,g)=>a+g.progress,0)/Math.max(goals.length,1))}% complete</p></div><Btn gold onClick={()=>setSn(true)}><Plus size={13}/>New Goal</Btn></div>
+    {sn&&(<div style={{background:C.card,border:`1px solid ${C.borderHi}`,borderRadius:12,padding:20}}><div style={{fontSize:10,color:C.gold,fontWeight:600,letterSpacing:"1.2px",textTransform:"uppercase",marginBottom:14}}>Define New Goal</div><div style={{display:"flex",flexDirection:"column",gap:10}}><input value={form.title}onChange={e=>setForm(p=>({...p,title:e.target.value}))}placeholder="What do you want to achieve?"style={{background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"10px 13px",fontSize:13,color:C.text,outline:"none",fontFamily:"inherit"}}/><div style={{display:"flex",gap:8}}><select value={form.category}onChange={e=>setForm(p=>({...p,category:e.target.value}))}style={{flex:1,background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"inherit"}}>{Object.entries(CATS).map(([k,v])=><option key={k}value={k}>{v.label}</option>)}</select><input type="date"value={form.deadline}onChange={e=>setForm(p=>({...p,deadline:e.target.value}))}style={{flex:1,background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"inherit"}}/></div><textarea value={form.vision}onChange={e=>setForm(p=>({...p,vision:e.target.value}))}placeholder="Why does this goal matter?"rows={2}style={{background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",resize:"none",fontFamily:"inherit"}}/><div style={{display:"flex",justifyContent:"flex-end",gap:8}}><Btn onClick={()=>setSn(false)}>Cancel</Btn><Btn gold onClick={cr}><Sparkles size={12}/>Create + AI Decompose</Btn></div></div></div>)}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>{goals.map(goal=>{const cat=CATS[goal.category]||CATS.work;const days=Math.ceil((new Date(goal.deadline)-new Date())/(1000*60*60*24));const open=exp===goal.id;return(<div key={goal.id}onClick={()=>setExp(open?null:goal.id)}style={{background:C.card,border:`1px solid ${open?goal.color+"50":C.border}`,borderRadius:12,padding:18,cursor:"pointer",transition:"border-color 0.2s"}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}><div style={{flex:1,marginRight:12}}><div style={{fontSize:9,color:cat.color,textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:5,fontWeight:600}}>{cat.label}</div><div style={{fontSize:14,fontWeight:500,color:C.text,lineHeight:1.4}}>{goal.title}</div></div><div style={{position:"relative",flexShrink:0}}><ProgressRing progress={goal.progress}size={52}stroke={4}color={goal.color}/><div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:11,fontWeight:600,color:C.text,textAlign:"center"}}>{goal.progress}%</div></div></div><div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.textSec}}><span>{days>0?`${days}d remaining`:"Overdue"}</span><span>{goal.milestones?.filter(m=>m.done).length}/{goal.milestones?.length} milestones</span></div>{open&&(<div style={{borderTop:`1px solid ${C.border}`,marginTop:14,paddingTop:14}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><span style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px"}}>Milestones</span><button onClick={e=>{e.stopPropagation();dc(goal)}}disabled={!!al}style={{background:"none",border:`1px solid ${C.border}`,borderRadius:5,color:C.textSec,cursor:"pointer",padding:"3px 8px",fontSize:9,display:"flex",alignItems:"center",gap:4,fontFamily:"inherit"}}><Sparkles size={8}/>{al===goal.id?"Analyzing…":"Regenerate"}</button></div>{al===goal.id&&!goal.milestones?.length?<div style={{fontSize:12,color:C.textMut,fontStyle:"italic"}}>AI decomposing…</div>:(<div style={{display:"flex",flexDirection:"column",gap:8}}>{goal.milestones?.map(m=><div key={m.id}onClick={e=>{e.stopPropagation();tm(goal.id,m.id)}}style={{display:"flex",alignItems:"flex-start",gap:9}}><div style={{width:15,height:15,borderRadius:4,flexShrink:0,marginTop:1,border:`1px solid ${m.done?goal.color:C.borderHi}`,background:m.done?goal.color+"28":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>{m.done&&<Check size={9}color={goal.color}/>}</div><span style={{fontSize:12,color:m.done?C.textMut:C.text,lineHeight:1.5,textDecoration:m.done?"line-through":"none"}}>{m.title}</span></div>)}</div>)}</div>)}</div>)})}</div>
+  </div>)
+}
 
-    function NewsCard({ item, index }) {
-      const [expanded, setExpanded] = useState(false);
-      return (
-        <div
-          className={"news-card" + (expanded ? " expanded" : "")}
-          onClick={() => setExpanded(!expanded)}
-          style={{ animationDelay: index * 0.08 + "s", animation: "fadeSlideIn 0.4s ease " + (index * 0.08) + "s both" }}
-        >
-          <div className="news-card-header">
-            <div className="news-headline">{item.headline}</div>
-            <SignalBadge signal={item.signal} />
-          </div>
-          {expanded && (
-            <div className="news-detail">
-              <p className="news-summary">{item.summary}</p>
-              <div className="news-relevance">{"\u26A1"} {item.relevance}</div>
-              <span className="news-source">SOURCE: {(item.source || "").toUpperCase()}</span>
-            </div>
-          )}
-        </div>
-      );
-    }
+function StrategicView({goals}){const q=["Q1 2026","Q2 2026","Q3 2026","Q4 2026","Q1 2027"],CQ="Q2 2026";return(<div style={{flex:1,overflowY:"auto",padding:24,display:"flex",flexDirection:"column",gap:22}}><div><h2 style={{fontSize:20,fontWeight:400,color:C.text,margin:0}}>Strategic Vision</h2><p style={{fontSize:12,color:C.textSec,margin:"3px 0 0"}}>Long-term roadmap · Zenith Rise Capital</p></div><div style={{background:C.goldGlow,border:`1px solid ${C.gold}30`,borderRadius:12,padding:20}}><div style={{fontSize:9,color:C.gold,textTransform:"uppercase",letterSpacing:"1.5px",fontWeight:600,marginBottom:10}}>North Star</div><p style={{fontSize:14,color:C.text,margin:0,lineHeight:1.8,fontWeight:300}}>Build ZRC into the leading geopolitical intelligence and real estate investment advisory practice in Southern Europe — generating €500K+ annual advisory revenue, publishing institutional-grade research, maintaining excellence across all objectives.</p></div><div><div style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:12,fontWeight:600}}>Quarterly Roadmap</div><div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:8}}>{q.map((qr,i)=>{const iC=qr===CQ,iP=i<q.indexOf(CQ);return(<div key={qr}style={{minWidth:150,background:iC?C.goldGlow:C.card,border:`1px solid ${iC?C.gold:C.border}`,borderRadius:10,padding:14,flexShrink:0}}><div style={{fontSize:10,fontWeight:600,color:iC?C.gold:iP?C.textMut:C.textSec,marginBottom:10,textTransform:"uppercase",letterSpacing:"1px"}}>{qr}{iC?" Now":""}</div>{goals.slice(0,3).map(g=><div key={g.id}style={{marginBottom:8}}><div style={{width:"100%",height:2,background:C.border,borderRadius:1,marginBottom:3}}><div style={{height:"100%",borderRadius:1,background:g.color,width:`${iC?g.progress:iP?100:0}%`,transition:"width 1s"}}/></div><div style={{fontSize:9,color:iP?C.textMut:C.textSec}}>{g.title.substring(0,24)}{g.title.length>24?"…":""}</div></div>)}</div>)})}</div></div><div><div style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:12,fontWeight:600}}>OKR Dashboard</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{goals.map(g=>{const cat=CATS[g.category]||CATS.work;return(<div key={g.id}style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:14,display:"flex",alignItems:"center",gap:14}}><ProgressRing progress={g.progress}size={44}stroke={3.5}color={g.color}/><div style={{flex:1,minWidth:0}}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><Tag label={cat.label}color={cat.color}/></div><div style={{fontSize:13,color:C.text,marginBottom:3,fontWeight:500}}>{g.title}</div><div style={{fontSize:11,color:C.textSec}}>{g.milestones?.filter(m=>m.done).length}/{g.milestones?.length} milestones · {new Date(g.deadline).toLocaleDateString("en-GB",{month:"short",year:"numeric"})}</div></div><div style={{fontSize:22,fontWeight:200,color:g.color,flexShrink:0}}>{g.progress}<span style={{fontSize:11,color:C.textSec}}>%</span></div></div>)})}</div></div></div>)}
 
-    function CategorySection({ category }) {
-      const [data, setData] = useState(null);
-      const [loading, setLoading] = useState(false);
-      const [error, setError] = useState(null);
-      const [isOpen, setIsOpen] = useState(false);
-      const fetched = useRef(false);
-
-      async function fetchNews() {
-        if (fetched.current || loading) return;
-        fetched.current = true;
-        setLoading(true);
-        setError(null);
-        try {
-          const response = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              model: "claude-sonnet-4-20250514",
-              max_tokens: 1500,
-              system: SYSTEM_PROMPT,
-              tools: [{ type: "web_search_20250305", name: "web_search" }],
-              messages: [{ role: "user", content: "Search for the latest developments on: " + category.query + ". Today's date is " + new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) + ". Return the JSON intelligence briefing." }]
-            })
-          });
-          const result = await response.json();
-          const textBlock = (result.content || []).filter(function(b) { return b.type === "text"; }).map(function(b) { return b.text; }).join("");
-          if (textBlock) {
-            const clean = textBlock.replace(/```json|```/g, "").trim();
-            const parsed = JSON.parse(clean);
-            setData(parsed);
-          } else {
-            setError("No results returned. Verify API access.");
-          }
-        } catch (err) {
-          setError("Failed to fetch intelligence. Check API configuration.");
-          console.error(err);
-        }
-        setLoading(false);
-      }
-
-      function handleToggle() {
-        const next = !isOpen;
-        setIsOpen(next);
-        if (next && !fetched.current) fetchNews();
-      }
-
-      return (
-        <div>
-          <button className={"cat-btn" + (isOpen ? " open" : "")} onClick={handleToggle}>
-            <div className="cat-btn-left">
-              <span className="cat-icon">{category.icon}</span>
-              <div style={{ textAlign: "left" }}>
-                <div className="cat-label">{category.label}</div>
-                <div className="cat-desc">{category.description}</div>
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center" }}>
-              {data && <span className="cat-count">{(data.items || []).length} ITEMS</span>}
-              <span className={"cat-arrow" + (isOpen ? " open" : "")}>{"\u25BE"}</span>
-            </div>
-          </button>
-
-          {isOpen && (
-            <div className="cat-content">
-              {loading && (
-                <div style={{ textAlign: "center", padding: "30px" }}>
-                  <div className="spinner"></div>
-                  <p className="spinner-label">SCANNING SOURCES...</p>
-                </div>
-              )}
-              {error && <div className="error-box">{error}</div>}
-              {data && (
-                <div>
-                  {(data.items || []).map(function(item, i) {
-                    return <NewsCard key={i} item={item} index={i} />;
-                  })}
-                  {data.keyTakeaway && (
-                    <div className="takeaway-box">
-                      <div className="takeaway-label">KEY TAKEAWAY</div>
-                      <div className="takeaway-text">{data.keyTakeaway}</div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    function App() {
-      const [time, setTime] = useState(new Date());
-
-      useEffect(function() {
-        const t = setInterval(function() { setTime(new Date()); }, 60000);
-        return function() { clearInterval(t); };
-      }, []);
-
-      const dateStr = time.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
-      const timeStr = time.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
-
-      return (
-        <div>
-          <header className="header">
-            <div className="header-inner">
-              <div className="header-row">
-                <div>
-                  <div>
-                    <span className="live-dot"></span>
-                    <span className="brand-tag">ZENITH RISE CAPITAL</span>
-                  </div>
-                  <h1 className="main-title">Morning Intelligence</h1>
-                  <p className="sub-title">Geopolitical Observatory · Investor Intelligence · Advisory Signals</p>
-                </div>
-                <div className="date-block">
-                  <div className="date-text">{dateStr}</div>
-                  <div className="time-text">{timeStr}</div>
-                </div>
-              </div>
-              <div className="legend">
-                <span className="legend-badge signal-bullish">BULLISH</span>
-                <span className="legend-badge signal-bearish">BEARISH</span>
-                <span className="legend-badge signal-watch">WATCH</span>
-                <span className="legend-badge signal-neutral">NEUTRAL</span>
-              </div>
-            </div>
-          </header>
-
-          <main>
-            <div className="desks-header">
-              <span className="mono-label">{CATEGORIES.length} INTELLIGENCE DESKS</span>
-              <span className="mono-hint">TAP TO EXPAND · TAP ITEM FOR DETAIL</span>
-            </div>
-            {CATEGORIES.map(function(cat) {
-              return <CategorySection key={cat.id} category={cat} />;
-            })}
-          </main>
-
-          <footer>
-            <div className="footer-brand">ZENITH RISE CAPITAL · GEOPOLITICAL INTELLIGENCE & INVESTMENT ADVISORY</div>
-            <div className="footer-legal">Calesius Global S.L. · Madrid · This briefing is for informational purposes only and does not constitute investment advice.</div>
-          </footer>
-        </div>
-      );
-    }
-
-    ReactDOM.createRoot(document.getElementById("app")).render(<App />);
-  </script>
-</body>
-</html>
+export default function App(){
+  const[view,setView]=useState("today");const[tasks,setTasks]=useState(()=>storage.get("tasks",SAMPLE_TASKS));const[goals,setGoals]=useState(()=>storage.get("goals",SAMPLE_GOALS));
+  useEffect(()=>{storage.set("tasks",tasks)},[tasks]);useEffect(()=>{storage.set("goals",goals)},[goals]);
+  const VIEWS={today:TodayView,week:WeekView,month:MonthView,year:YearView,goals:GoalsView,strategic:StrategicView};const View=VIEWS[view];
+  return(<div style={{display:"flex",height:"100vh",background:C.bg,color:C.text,fontFamily:"-apple-system,'SF Pro Display','Segoe UI',sans-serif",overflow:"hidden"}}>
+    <style>{"@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input::placeholder,textarea::placeholder{color:#404058}select option{background:#171728}[draggable]{user-select:none}"}</style>
+    <Sidebar view={view}setView={setView}/><View tasks={tasks}setTasks={setTasks}goals={goals}setGoals={setGoals}/></div>)
+}
