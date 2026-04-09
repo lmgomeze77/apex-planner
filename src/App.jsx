@@ -1,11 +1,121 @@
-import{useState,useEffect}from"react"
-import{Target,Calendar,CalendarDays,BarChart2,Layers,Plus,CheckCircle2,Circle,Zap,X,Sparkles,RefreshCw,Check,ChevronLeft,ChevronRight,Trash2,Edit3,GripVertical}from"lucide-react"
+import{useState,useEffect,useRef}from"react"
+import{Target,Calendar,CalendarDays,BarChart2,Layers,Plus,CheckCircle2,Circle,Zap,X,Sparkles,RefreshCw,Check,ChevronLeft,ChevronRight,Edit3,GripVertical,Trash2,Clock,Tag as TagIcon}from"lucide-react"
 import{generateBriefing,decomposeGoal}from"./lib/api.js"
 import{storage}from"./lib/storage.js"
 import{C,PRIORITY,CATS,TODAY,SAMPLE_TASKS,SAMPLE_GOALS}from"./lib/constants.js"
-import{Tag,Btn,ProgressRing,TaskEditModal,DraggableTaskRow}from"./components/Shared.jsx"
-import{WeekView,MonthView,YearView}from"./components/Calendars.jsx"
 
+// ── Shared helpers ────────────────────────────────────────────
+function Tag({label,color}){return<span style={{fontSize:10,padding:"2px 7px",borderRadius:4,background:color+"18",color,fontWeight:500,flexShrink:0}}>{label}</span>}
+function Btn({children,onClick,gold,small,danger,disabled,style:sx={}}){return<button onClick={onClick}disabled={disabled}style={{display:"flex",alignItems:"center",gap:5,cursor:disabled?"not-allowed":"pointer",padding:small?"5px 10px":"8px 16px",fontSize:small?11:12,fontWeight:600,borderRadius:7,border:gold?"none":danger?`1px solid ${C.red}40`:`1px solid ${C.borderHi}`,background:gold?C.gold:danger?C.red+"15":"transparent",color:gold?"#07070F":danger?C.red:C.textSec,opacity:disabled?0.5:1,fontFamily:"inherit",...sx}}>{children}</button>}
+function ProgressRing({progress,size=56,stroke=4,color=C.gold}){const r=(size-stroke)/2,ci=2*Math.PI*r,of=ci-(progress/100)*ci;return<svg width={size}height={size}style={{transform:"rotate(-90deg)",flexShrink:0}}><circle cx={size/2}cy={size/2}r={r}fill="none"stroke={C.border}strokeWidth={stroke}/><circle cx={size/2}cy={size/2}r={r}fill="none"stroke={color}strokeWidth={stroke}strokeDasharray={ci}strokeDashoffset={of}strokeLinecap="round"style={{transition:"stroke-dashoffset 1s ease"}}/></svg>}
+
+// ── TaskEditModal — click any task to edit everything ─────────
+function TaskEditModal({task,onSave,onDelete,onClose}){
+  const[t,setT]=useState({...task});
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}} onClick={e=>{if(e.target===e.currentTarget)onClose()}}>
+      <div style={{width:420,background:C.card,border:`1px solid ${C.borderHi}`,borderRadius:14,overflow:"hidden",boxShadow:"0 24px 60px rgba(0,0,0,0.5)"}}>
+        <div style={{padding:"18px 20px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}><Edit3 size={14}color={C.gold}/><span style={{fontSize:12,color:C.gold,fontWeight:600,letterSpacing:"1px",textTransform:"uppercase"}}>Edit Task</span></div>
+          <button onClick={onClose}style={{border:"none",background:"none",color:C.textMut,cursor:"pointer",padding:0,display:"flex"}}><X size={15}/></button></div>
+        <div style={{padding:"18px 20px",display:"flex",flexDirection:"column",gap:14}}>
+          <div>
+            <div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:6}}>Title</div>
+            <input value={t.title}onChange={e=>setT(p=>({...p,title:e.target.value}))}style={{width:"100%",background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"inherit"}}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              <div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:6}}>Priority</div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>{["CRITICAL","HIGH","NORMAL"].map(p=><button key={p}onClick={()=>setT(pr=>({...pr,priority:p}))}style={{padding:"5px 10px",borderRadius:6,fontSize:10,cursor:"pointer",fontWeight:600,textAlign:"left",border:`1px solid ${t.priority===p?PRIORITY[p].color:C.border}`,background:t.priority===p?PRIORITY[p].color+"18":"transparent",color:t.priority===p?PRIORITY[p].color:C.textMut,fontFamily:"inherit"}}>{PRIORITY[p].label}</button>)}</div></div>
+            <div>
+              <div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:6}}>Category</div>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>{Object.entries(CATS).slice(0,5).map(([k,v])=><button key={k}onClick={()=>setT(p=>({...p,category:k}))}style={{padding:"5px 10px",borderRadius:6,fontSize:10,cursor:"pointer",textAlign:"left",border:`1px solid ${t.category===k?v.color:C.border}`,background:t.category===k?v.color+"18":"transparent",color:t.category===k?v.color:C.textMut,fontFamily:"inherit"}}>{v.label}</button>)}</div></div></div>
+          <div>
+            <div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:6}}>Due Date</div>
+            <input type="date"value={t.dueDate||""}onChange={e=>setT(p=>({...p,dueDate:e.target.value}))}style={{width:"100%",background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"inherit"}}/></div>
+          <div>
+            <div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:6}}>Notes</div>
+            <textarea value={t.notes||""}onChange={e=>setT(p=>({...p,notes:e.target.value}))}rows={3}placeholder="Context, blockers, outcome..."style={{width:"100%",background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 12px",fontSize:12,color:C.text,outline:"none",resize:"none",fontFamily:"inherit"}}/></div>
+          <div style={{display:"flex",justifyContent:"space-between",paddingTop:4}}>
+            <Btn danger small onClick={()=>{onDelete(task.id);onClose()}}><Trash2 size={11}/>Delete</Btn>
+            <div style={{display:"flex",gap:8}}><Btn onClick={onClose}>Cancel</Btn><Btn gold onClick={()=>{onSave(t);onClose()}}><Check size={12}/>Save</Btn></div></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── DraggableTaskRow ──────────────────────────────────────────
+function DraggableTaskRow({task,onToggle,onDelete,onEdit,onDragStart,onDragEnd}){
+  const[h,setH]=useState(false);const[dragging,setDragging]=useState(false);
+  const pr=PRIORITY[task.priority];const cat=CATS[task.category]||CATS.work;
+  return(
+    <div draggable onDragStart={e=>{setDragging(true);onDragStart(e,task.id)}}onDragEnd={()=>{setDragging(false);onDragEnd()}}
+      onMouseEnter={()=>setH(true)}onMouseLeave={()=>setH(false)}
+      style={{background:dragging?"transparent":h&&task.status!=="done"?C.elevated:C.card,border:`1px solid ${dragging?"transparent":C.border}`,borderLeft:`3px solid ${pr.color}`,borderRadius:8,padding:"9px 12px",display:"flex",alignItems:"center",gap:8,transition:"all 0.15s",opacity:dragging?0.3:task.status==="done"?0.45:1,cursor:"grab"}}>
+      <GripVertical size={12}color={C.textMut}style={{flexShrink:0,cursor:"grab"}}/>
+      <button onClick={()=>onToggle(task.id)}style={{border:"none",background:"none",cursor:"pointer",color:task.status==="done"?C.green:C.textMut,padding:0,display:"flex",flexShrink:0}}>{task.status==="done"?<CheckCircle2 size={16}/>:<Circle size={16}/>}</button>
+      <span onClick={()=>onEdit(task)}style={{flex:1,fontSize:13,color:C.text,textDecoration:task.status==="done"?"line-through":"none",cursor:"pointer"}}>{task.title}</span>
+      {task.notes&&<div style={{width:6,height:6,borderRadius:"50%",background:C.gold,flexShrink:0}}title="Has notes"/>}
+      <Tag label={cat.label}color={cat.color}/>
+      {task.dueDate&&task.dueDate!==TODAY&&<span style={{fontSize:9,color:C.textMut,flexShrink:0}}>{new Date(task.dueDate+"T12:00:00").toLocaleDateString("en-GB",{month:"short",day:"numeric"})}</span>}
+      {h&&<button onClick={e=>{e.stopPropagation();onDelete(task.id)}}style={{border:"none",background:"none",cursor:"pointer",color:C.textMut,padding:0,display:"flex",flexShrink:0}}><X size={12}/></button>}
+    </div>
+  )
+}
+
+// ── DayPanel — works for any date, full features ──────────────
+function DayPanel({day,tasks,setTasks,notes,onNoteChange,onClose}){
+  const[nt,setNt]=useState("");const[np,setNp]=useState("HIGH");const[nc,setNc]=useState("work");const[nd,setNd]=useState(day.date);const[sa,setSa]=useState(false);
+  const[editTask,setEditTask]=useState(null);const[dragOver,setDragOver]=useState(false);
+  const dt=tasks.filter(t=>t.dueDate===day.date);const dn=dt.filter(t=>t.status==="done").length;const pt=dt.length?Math.round(dn/dt.length*100):0;
+  const gr={CRITICAL:dt.filter(t=>t.priority==="CRITICAL"&&t.status!=="done"),HIGH:dt.filter(t=>t.priority==="HIGH"&&t.status!=="done"),NORMAL:dt.filter(t=>t.priority==="NORMAL"&&t.status!=="done")};
+  const doneT=dt.filter(t=>t.status==="done");
+  const tog=id=>setTasks(p=>p.map(t=>t.id===id?{...t,status:t.status==="done"?"pending":"done"}:t));
+  const del=id=>setTasks(p=>p.filter(t=>t.id!==id));
+  const save=updated=>setTasks(p=>p.map(t=>t.id===updated.id?{...t,...updated}:t));
+  const add=()=>{if(!nt.trim())return;setTasks(p=>[...p,{id:Date.now(),title:nt,priority:np,status:"pending",category:nc,dueDate:nd}]);setNt("");setSa(false)};
+  const onDS=(e,id)=>e.dataTransfer.setData("taskId",String(id));
+  const onDE=()=>{};
+  const onDrop=e=>{e.preventDefault();setDragOver(false);const id=Number(e.dataTransfer.getData("taskId"));setTasks(p=>p.map(t=>t.id===id?{...t,dueDate:day.date}:t))};
+  return(
+    <div style={{width:300,background:C.surface,borderLeft:`1px solid ${C.border}`,display:"flex",flexDirection:"column",flexShrink:0,overflow:"hidden"}}
+      onDragOver={e=>{e.preventDefault();setDragOver(true)}}onDragLeave={()=>setDragOver(false)}onDrop={onDrop}>
+      {dragOver&&<div style={{position:"absolute",inset:0,background:`${C.gold}12`,border:`2px dashed ${C.gold}`,borderRadius:0,pointerEvents:"none",zIndex:10}}/>}
+      {editTask&&<TaskEditModal task={editTask}onSave={save}onDelete={del}onClose={()=>setEditTask(null)}/>}
+      <div style={{padding:"14px 16px",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px"}}>{day.label}</div><div style={{fontSize:17,fontWeight:300,color:day.isToday?C.gold:C.text}}>{day.num} {day.month}</div></div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}><div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:200,color:C.text}}>{pt}<span style={{fontSize:10,color:C.textSec}}>%</span></div><div style={{fontSize:9,color:C.textMut}}>{dn}/{dt.length} done</div></div>
+          <button onClick={onClose}style={{border:"none",background:"none",color:C.textMut,cursor:"pointer",padding:0,display:"flex"}}><X size={15}/></button></div></div>
+      <div style={{height:2,background:C.border}}><div style={{height:"100%",background:C.gold,width:`${pt}%`,transition:"width 0.5s"}}/></div>
+      <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
+        {dt.length===0&&!sa&&<div style={{fontSize:11,color:C.textMut,fontStyle:"italic",textAlign:"center",marginTop:16}}>Drop tasks here or click below to add.</div>}
+        {Object.entries(gr).map(([pri,items])=>items.length>0&&(<div key={pri}><div style={{fontSize:9,color:PRIORITY[pri].color,textTransform:"uppercase",letterSpacing:"1px",fontWeight:600,marginBottom:5}}>{PRIORITY[pri].label}</div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>{items.map(t=>(
+            <DraggableTaskRow key={t.id}task={t}onToggle={tog}onDelete={del}onEdit={setEditTask}onDragStart={onDS}onDragEnd={onDE}/>
+          ))}</div></div>))}
+        {doneT.length>0&&(<div><div style={{fontSize:9,color:C.green,textTransform:"uppercase",letterSpacing:"1px",fontWeight:600,marginBottom:5}}>Done ({doneT.length})</div>
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>{doneT.map(t=><DraggableTaskRow key={t.id}task={t}onToggle={tog}onDelete={del}onEdit={setEditTask}onDragStart={onDS}onDragEnd={onDE}/>)}</div></div>)}
+        {sa?(<div style={{background:C.elevated,border:`1px solid ${C.borderHi}`,borderRadius:8,padding:12,display:"flex",flexDirection:"column",gap:8}}>
+          <input value={nt}onChange={e=>setNt(e.target.value)}onKeyDown={e=>e.key==="Enter"&&add()}autoFocus placeholder="Task title..."style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:6,padding:"7px 10px",fontSize:12,color:C.text,outline:"none",fontFamily:"inherit"}}/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+            <div><div style={{fontSize:8,color:C.textMut,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.8px"}}>Priority</div>
+              <div style={{display:"flex",flexDirection:"column",gap:3}}>{["CRITICAL","HIGH","NORMAL"].map(p=><button key={p}onClick={()=>setNp(p)}style={{padding:"3px 7px",borderRadius:5,fontSize:9,cursor:"pointer",fontWeight:600,textAlign:"left",border:`1px solid ${np===p?PRIORITY[p].color:C.border}`,background:np===p?PRIORITY[p].color+"18":"transparent",color:np===p?PRIORITY[p].color:C.textMut,fontFamily:"inherit"}}>{PRIORITY[p].label}</button>)}</div></div>
+            <div><div style={{fontSize:8,color:C.textMut,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.8px"}}>Category</div>
+              <div style={{display:"flex",flexDirection:"column",gap:3}}>{Object.entries(CATS).slice(0,5).map(([k,v])=><button key={k}onClick={()=>setNc(k)}style={{padding:"3px 7px",borderRadius:5,fontSize:9,cursor:"pointer",textAlign:"left",border:`1px solid ${nc===k?v.color:C.border}`,background:nc===k?v.color+"18":"transparent",color:nc===k?v.color:C.textMut,fontFamily:"inherit"}}>{v.label}</button>)}</div></div></div>
+          <div><div style={{fontSize:8,color:C.textMut,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.8px"}}>Due Date</div>
+            <input type="date"value={nd}onChange={e=>setNd(e.target.value)}style={{width:"100%",background:C.card,border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 8px",fontSize:11,color:C.text,outline:"none",fontFamily:"inherit"}}/></div>
+          <div style={{display:"flex",gap:5,justifyContent:"flex-end"}}>
+            <button onClick={()=>setSa(false)}style={{border:`1px solid ${C.border}`,background:"none",borderRadius:6,color:C.textSec,cursor:"pointer",padding:"4px 8px",fontSize:10,fontFamily:"inherit"}}>Cancel</button>
+            <button onClick={add}style={{border:"none",background:C.gold,borderRadius:6,color:"#07070F",cursor:"pointer",padding:"4px 10px",fontSize:10,fontWeight:600,fontFamily:"inherit"}}>Add Task</button></div>
+        </div>):(<button onClick={()=>setSa(true)}style={{display:"flex",alignItems:"center",gap:6,background:"transparent",border:`1px dashed ${C.border}`,borderRadius:6,color:C.textMut,cursor:"pointer",padding:"7px 10px",fontSize:12,fontFamily:"inherit"}}><Plus size={12}/>Add task for any date…</button>)}
+      </div>
+      <div style={{padding:"10px 14px",borderTop:`1px solid ${C.border}`}}><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:5}}>Notes & Outcomes</div>
+        <textarea value={notes||""}onChange={e=>onNoteChange(e.target.value)}rows={3}placeholder="What happened, decisions, blockers..."style={{width:"100%",background:C.elevated,border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 9px",fontSize:11,color:C.text,outline:"none",resize:"none",fontFamily:"inherit"}}/></div>
+    </div>
+  )
+}
+
+// ── Sidebar ───────────────────────────────────────────────────
 function Sidebar({view,setView}){
   const nav=[{id:"today",icon:Zap,label:"Today"},{id:"week",icon:Calendar,label:"Week"},{id:"month",icon:CalendarDays,label:"Month"},{id:"year",icon:BarChart2,label:"Year"},{id:"goals",icon:Target,label:"Goals"},{id:"strategic",icon:Layers,label:"Strategic"}];
   return(<div style={{width:54,background:C.surface,borderRight:`1px solid ${C.border}`,display:"flex",flexDirection:"column",alignItems:"center",padding:"12px 0",gap:2,flexShrink:0}}>
@@ -15,8 +125,10 @@ function Sidebar({view,setView}){
   </div>)
 }
 
+// ── Today View ────────────────────────────────────────────────
 function TodayView({tasks,setTasks,goals}){
-  const[br,setBr]=useState("");const[bl,setBl]=useState(false);const[sa,setSa]=useState(false);const[nt,setNt]=useState("");const[np,setNp]=useState("HIGH");const[nc,setNc]=useState("work");const[nd,setNd]=useState(TODAY);const[editTask,setEditTask]=useState(null);
+  const[br,setBr]=useState("");const[bl,setBl]=useState(false);const[sa,setSa]=useState(false);const[nt,setNt]=useState("");const[np,setNp]=useState("HIGH");const[nc,setNc]=useState("work");const[nd,setNd]=useState(TODAY);
+  const[editTask,setEditTask]=useState(null);const[dragId,setDragId]=useState(null);
   const ds=new Date().toLocaleDateString("en-GB",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
   const pe=tasks.filter(t=>t.status!=="done"),dn=tasks.filter(t=>t.status==="done"),pt=tasks.length?Math.round(dn.length/tasks.length*100):0;
   const gr={CRITICAL:pe.filter(t=>t.priority==="CRITICAL"),HIGH:pe.filter(t=>t.priority==="HIGH"),NORMAL:pe.filter(t=>t.priority==="NORMAL")};
@@ -25,28 +137,128 @@ function TodayView({tasks,setTasks,goals}){
   const del=id=>setTasks(p=>p.filter(t=>t.id!==id));
   const save=u=>setTasks(p=>p.map(t=>t.id===u.id?{...t,...u}:t));
   const add=()=>{if(!nt.trim())return;setTasks(p=>[{id:Date.now(),title:nt,priority:np,status:"pending",category:nc,dueDate:nd},...p]);setNt("");setSa(false)};
-  return(<div style={{flex:1,overflowY:"auto",padding:24,display:"flex",flexDirection:"column",gap:18}}>
-    {editTask&&<TaskEditModal task={editTask}onSave={save}onDelete={del}onClose={()=>setEditTask(null)}/>}
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-      <div><div style={{fontSize:11,color:C.textMut,marginBottom:3}}>{ds}</div><h1 style={{fontSize:22,fontWeight:300,color:C.text,margin:0}}>Good morning, <span style={{color:C.gold,fontWeight:500}}>Luis</span></h1></div>
-      <div style={{textAlign:"right"}}><div style={{fontSize:26,fontWeight:200,color:C.text}}>{pt}<span style={{fontSize:13,color:C.textSec}}>%</span></div><div style={{fontSize:10,color:C.textMut}}>TODAY COMPLETE</div></div></div>
-    <div style={{height:2,background:C.border,borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:C.gold,width:`${pt}%`,transition:"width 1s"}}/></div>
-    <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{display:"flex",alignItems:"center",gap:7}}><Sparkles size={13}color={C.gold}/><span style={{fontSize:10,color:C.gold,fontWeight:600,letterSpacing:"1.2px",textTransform:"uppercase"}}>AI Chief of Staff</span></div><Btn small onClick={brief}disabled={bl}><RefreshCw size={10}style={{animation:bl?"spin 1s linear infinite":"none"}}/>{bl?"Analyzing…":"Brief me"}</Btn></div>
-      <p style={{fontSize:13,color:br?C.text:C.textMut,lineHeight:1.75,margin:0,fontStyle:br?"normal":"italic"}}>{br||"Click Brief me for your AI daily intelligence."}</p></div>
-    {Object.entries(gr).map(([pri,items])=>items.length>0&&(<div key={pri}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><div style={{width:6,height:6,borderRadius:"50%",background:PRIORITY[pri].color}}/><span style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",fontWeight:600}}>{PRIORITY[pri].label}</span><span style={{fontSize:10,color:C.textMut}}>({items.length})</span></div><div style={{display:"flex",flexDirection:"column",gap:6}}>{items.map(t=><DraggableTaskRow key={t.id}task={t}onToggle={tog}onDelete={del}onEdit={setEditTask}onDragStart={e=>e.dataTransfer.setData("taskId",String(t.id))}/>)}</div></div>))}
-    {dn.length>0&&(<div><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><CheckCircle2 size={11}color={C.green}/><span style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",fontWeight:600}}>Completed ({dn.length})</span></div><div style={{display:"flex",flexDirection:"column",gap:6}}>{dn.map(t=><DraggableTaskRow key={t.id}task={t}onToggle={tog}onDelete={del}onEdit={setEditTask}onDragStart={e=>e.dataTransfer.setData("taskId",String(t.id))}/>)}</div></div>)}
-    {sa?(<div style={{background:C.card,border:`1px solid ${C.borderHi}`,borderRadius:10,padding:14,display:"flex",flexDirection:"column",gap:10}}>
-      <input value={nt}onChange={e=>setNt(e.target.value)}onKeyDown={e=>e.key==="Enter"&&add()}autoFocus placeholder="Task description…"style={{background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"inherit"}}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
-        <div><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:5}}>Priority</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{["CRITICAL","HIGH","NORMAL"].map(p=><button key={p}onClick={()=>setNp(p)}style={{padding:"4px 8px",borderRadius:5,fontSize:10,cursor:"pointer",fontWeight:600,textAlign:"left",border:`1px solid ${np===p?PRIORITY[p].color:C.border}`,background:np===p?PRIORITY[p].color+"18":"transparent",color:np===p?PRIORITY[p].color:C.textMut,fontFamily:"inherit"}}>{PRIORITY[p].label}</button>)}</div></div>
-        <div><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:5}}>Category</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{Object.entries(CATS).slice(0,5).map(([k,v])=><button key={k}onClick={()=>setNc(k)}style={{padding:"4px 8px",borderRadius:5,fontSize:10,cursor:"pointer",textAlign:"left",border:`1px solid ${nc===k?v.color:C.border}`,background:nc===k?v.color+"18":"transparent",color:nc===k?v.color:C.textMut,fontFamily:"inherit"}}>{v.label}</button>)}</div></div></div>
-      <div><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:5}}>Due Date</div><input type="date"value={nd}onChange={e=>setNd(e.target.value)}style={{width:"100%",background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 10px",fontSize:12,color:C.text,outline:"none",fontFamily:"inherit"}}/></div>
-      <div style={{display:"flex",justifyContent:"flex-end",gap:8}}><Btn onClick={()=>setSa(false)}>Cancel</Btn><Btn gold onClick={add}><Plus size={12}/>Add Task</Btn></div>
-    </div>):(<button onClick={()=>setSa(true)}style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"transparent",border:`1px dashed ${C.border}`,borderRadius:8,color:C.textMut,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}><Plus size={15}/>Add task…</button>)}
+  return(
+    <div style={{flex:1,overflowY:"auto",padding:24,display:"flex",flexDirection:"column",gap:18}}>
+      {editTask&&<TaskEditModal task={editTask}onSave={save}onDelete={del}onClose={()=>setEditTask(null)}/>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div><div style={{fontSize:11,color:C.textMut,marginBottom:3}}>{ds}</div><h1 style={{fontSize:22,fontWeight:300,color:C.text,margin:0}}>Good morning, <span style={{color:C.gold,fontWeight:500}}>Luis</span></h1></div>
+        <div style={{textAlign:"right"}}><div style={{fontSize:26,fontWeight:200,color:C.text}}>{pt}<span style={{fontSize:13,color:C.textSec}}>%</span></div><div style={{fontSize:10,color:C.textMut}}>TODAY COMPLETE</div></div></div>
+      <div style={{height:2,background:C.border,borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:C.gold,width:`${pt}%`,transition:"width 1s"}}/></div>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div style={{display:"flex",alignItems:"center",gap:7}}><Sparkles size={13}color={C.gold}/><span style={{fontSize:10,color:C.gold,fontWeight:600,letterSpacing:"1.2px",textTransform:"uppercase"}}>AI Chief of Staff</span></div><Btn small onClick={brief}disabled={bl}><RefreshCw size={10}style={{animation:bl?"spin 1s linear infinite":"none"}}/>{bl?"Analyzing…":"Brief me"}</Btn></div>
+        <p style={{fontSize:13,color:br?C.text:C.textMut,lineHeight:1.75,margin:0,fontStyle:br?"normal":"italic"}}>{br||"Click Brief me for your AI daily intelligence."}</p></div>
+      {Object.entries(gr).map(([pri,items])=>items.length>0&&(<div key={pri}><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><div style={{width:6,height:6,borderRadius:"50%",background:PRIORITY[pri].color}}/><span style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",fontWeight:600}}>{PRIORITY[pri].label}</span><span style={{fontSize:10,color:C.textMut}}>({items.length})</span></div><div style={{display:"flex",flexDirection:"column",gap:6}}>{items.map(t=><DraggableTaskRow key={t.id}task={t}onToggle={tog}onDelete={del}onEdit={setEditTask}onDragStart={(e,id)=>{e.dataTransfer.setData("taskId",String(id));setDragId(id)}}onDragEnd={()=>setDragId(null)}/>)}</div></div>))}
+      {dn.length>0&&(<div><div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}><CheckCircle2 size={11}color={C.green}/><span style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",fontWeight:600}}>Completed ({dn.length})</span></div><div style={{display:"flex",flexDirection:"column",gap:6}}>{dn.map(t=><DraggableTaskRow key={t.id}task={t}onToggle={tog}onDelete={del}onEdit={setEditTask}onDragStart={(e,id)=>e.dataTransfer.setData("taskId",String(id))}onDragEnd={()=>{}}/>)}</div></div>)}
+      {sa?(<div style={{background:C.card,border:`1px solid ${C.borderHi}`,borderRadius:10,padding:14,display:"flex",flexDirection:"column",gap:10}}>
+        <input value={nt}onChange={e=>setNt(e.target.value)}onKeyDown={e=>e.key==="Enter"&&add()}autoFocus placeholder="Task description…"style={{background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"9px 12px",fontSize:13,color:C.text,outline:"none",fontFamily:"inherit"}}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          <div><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:5}}>Priority</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{["CRITICAL","HIGH","NORMAL"].map(p=><button key={p}onClick={()=>setNp(p)}style={{padding:"4px 8px",borderRadius:5,fontSize:10,cursor:"pointer",fontWeight:600,textAlign:"left",border:`1px solid ${np===p?PRIORITY[p].color:C.border}`,background:np===p?PRIORITY[p].color+"18":"transparent",color:np===p?PRIORITY[p].color:C.textMut,fontFamily:"inherit"}}>{PRIORITY[p].label}</button>)}</div></div>
+          <div><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:5}}>Category</div><div style={{display:"flex",flexDirection:"column",gap:4}}>{Object.entries(CATS).slice(0,5).map(([k,v])=><button key={k}onClick={()=>setNc(k)}style={{padding:"4px 8px",borderRadius:5,fontSize:10,cursor:"pointer",textAlign:"left",border:`1px solid ${nc===k?v.color:C.border}`,background:nc===k?v.color+"18":"transparent",color:nc===k?v.color:C.textMut,fontFamily:"inherit"}}>{v.label}</button>)}</div></div></div>
+        <div><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:5}}>Due Date</div><input type="date"value={nd}onChange={e=>setNd(e.target.value)}style={{width:"100%",background:C.elevated,border:`1px solid ${C.border}`,borderRadius:7,padding:"8px 10px",fontSize:12,color:C.text,outline:"none",fontFamily:"inherit"}}/></div>
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8}}><Btn onClick={()=>setSa(false)}>Cancel</Btn><Btn gold onClick={add}><Plus size={12}/>Add Task</Btn></div>
+      </div>):(<button onClick={()=>setSa(true)}style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"transparent",border:`1px dashed ${C.border}`,borderRadius:8,color:C.textMut,cursor:"pointer",fontSize:13,fontFamily:"inherit"}}><Plus size={15}/>Add task…</button>)}
+    </div>
+  )
+}
+
+// ── Week View ─────────────────────────────────────────────────
+function getWeekDays(off){const now=new Date();const mon=new Date(now);mon.setDate(now.getDate()-now.getDay()+1+off*7);return Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);return{date:d.toISOString().split("T")[0],label:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][i],num:d.getDate(),month:d.toLocaleString("en-GB",{month:"short"}),isToday:d.toISOString().split("T")[0]===TODAY,fullDate:d}})}
+
+function WeekView({tasks,setTasks}){
+  const[wOff,setWOff]=useState(0);const[selDay,setSelDay]=useState(null);const[dragOver,setDragOver]=useState(null);
+  const[notes,setNotes]=useState(()=>{try{return JSON.parse(localStorage.getItem("apex:notes")||"{}")}catch{return{}}});
+  const days=getWeekDays(wOff);const f=days[0];const l=days[6];
+  const wLabel=f.month===l.month?`${f.month} ${f.num}–${l.num}, ${l.fullDate.getFullYear()}`:`${f.month} ${f.num} – ${l.month} ${l.num}, ${l.fullDate.getFullYear()}`;
+  const updNote=(date,val)=>{const u={...notes,[date]:val};setNotes(u);localStorage.setItem("apex:notes",JSON.stringify(u))};
+  const sd=selDay?{...days.find(d=>d.date===selDay)||{date:selDay,label:"",num:new Date(selDay+"T12:00:00").getDate(),month:new Date(selDay+"T12:00:00").toLocaleString("en-GB",{month:"short"}),isToday:selDay===TODAY}}:null;
+  const wT=tasks.filter(t=>days.some(d=>d.date===t.dueDate));const wD=wT.filter(t=>t.status==="done").length;
+  const onDrop=(e,date)=>{e.preventDefault();setDragOver(null);const id=Number(e.dataTransfer.getData("taskId"));if(id)setTasks(p=>p.map(t=>t.id===id?{...t,dueDate:date}:t))};
+  return(<div style={{flex:1,display:"flex",overflow:"hidden"}}>
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{padding:"18px 24px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div><h2 style={{fontSize:20,fontWeight:400,color:C.text,margin:0}}>Week Overview</h2><p style={{fontSize:12,color:C.textSec,margin:"2px 0 0"}}>{wLabel} · {wD}/{wT.length} done · drag tasks between days</p></div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button onClick={()=>setWOff(p=>p-1)}style={{width:30,height:30,borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textSec,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><ChevronLeft size={15}/></button>
+          {wOff!==0&&<button onClick={()=>setWOff(0)}style={{padding:"3px 9px",borderRadius:6,border:`1px solid ${C.border}`,background:"transparent",color:C.textSec,cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>Today</button>}
+          <button onClick={()=>setWOff(p=>p+1)}style={{width:30,height:30,borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textSec,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><ChevronRight size={15}/></button></div></div>
+      <div style={{flex:1,padding:"0 24px 24px",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:7,overflowY:"auto"}}>
+        {days.map(day=>{const dt=tasks.filter(t=>t.dueDate===day.date);const dn=dt.filter(t=>t.status==="done").length;const isSel=selDay===day.date;const isDO=dragOver===day.date;
+          return(<div key={day.date}
+            onDragOver={e=>{e.preventDefault();setDragOver(day.date)}}onDragLeave={()=>setDragOver(null)}onDrop={e=>onDrop(e,day.date)}
+            style={{background:isDO?C.goldGlow:isSel?"rgba(200,169,81,0.08)":day.isToday?"rgba(200,169,81,0.05)":C.card,border:`2px solid ${isDO?C.gold:isSel?C.gold+"70":day.isToday?C.gold+"30":C.border}`,borderRadius:10,padding:10,minHeight:190,cursor:"pointer",transition:"all 0.15s",display:"flex",flexDirection:"column"}}
+            onClick={()=>setSelDay(isSel?null:day.date)}>
+            <div style={{marginBottom:8}}><div style={{fontSize:9,color:day.isToday?C.gold:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",fontWeight:600}}>{day.label}</div><div style={{fontSize:21,fontWeight:200,color:day.isToday?C.gold:C.text,lineHeight:1.1}}>{day.num}</div><div style={{fontSize:9,color:C.textMut}}>{day.month}</div></div>
+            <div style={{flex:1,display:"flex",flexDirection:"column",gap:3}}>{dt.slice(0,5).map(t=><div key={t.id}style={{fontSize:9,padding:"2px 6px",borderRadius:3,lineHeight:1.4,background:PRIORITY[t.priority]?.color+"15",color:PRIORITY[t.priority]?.color,opacity:t.status==="done"?0.35:1,textDecoration:t.status==="done"?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.title}</div>)}{dt.length>5&&<div style={{fontSize:8,color:C.textMut}}>+{dt.length-5} more</div>}{dt.length===0&&<div style={{fontSize:9,color:isDO?C.gold:C.textMut,fontStyle:"italic"}}>{isDO?"Drop here":"No tasks"}</div>}</div>
+            {dt.length>0&&<div style={{marginTop:8}}><div style={{display:"flex",justifyContent:"space-between",fontSize:9,color:C.textMut,marginBottom:2}}><span>{dn}/{dt.length}</span><span>{Math.round(dn/dt.length*100)}%</span></div><div style={{height:2,background:C.border,borderRadius:1}}><div style={{height:"100%",borderRadius:1,background:dn===dt.length?C.green:C.gold,width:`${Math.round(dn/dt.length*100)}%`,transition:"width 0.5s"}}/></div></div>}
+            {notes[day.date]&&<div style={{fontSize:8,color:C.textMut,marginTop:5}}>✎ note</div>}
+          </div>)
+        })}
+      </div>
+    </div>
+    {sd&&<DayPanel day={sd}tasks={tasks}setTasks={setTasks}notes={notes[sd.date]}onNoteChange={val=>updNote(sd.date,val)}onClose={()=>setSelDay(null)}/>}
   </div>)
 }
 
+// ── Month View ────────────────────────────────────────────────
+function getMonthData(off){const now=new Date();const t=new Date(now.getFullYear(),now.getMonth()+off,1);const y=t.getFullYear();const m=t.getMonth();const mn=t.toLocaleString("en-GB",{month:"long"});const fd=new Date(y,m,1);const ld=new Date(y,m+1,0);let sd=fd.getDay()-1;if(sd<0)sd=6;const days=[];for(let i=0;i<sd;i++){const d=new Date(y,m,i-sd+1);days.push({date:d.toISOString().split("T")[0],num:d.getDate(),cur:false})}for(let i=1;i<=ld.getDate();i++){const d=new Date(y,m,i);days.push({date:d.toISOString().split("T")[0],num:i,cur:true})}const rem=7-(days.length%7);if(rem<7){for(let i=1;i<=rem;i++){const d=new Date(y,m+1,i);days.push({date:d.toISOString().split("T")[0],num:i,cur:false})}}return{y,m,mn,days}}
+
+function MonthView({tasks,setTasks}){
+  const[mOff,setMOff]=useState(0);const[selDay,setSelDay]=useState(null);const[dragOver,setDragOver]=useState(null);
+  const[notes,setNotes]=useState(()=>{try{return JSON.parse(localStorage.getItem("apex:notes")||"{}")}catch{return{}}});
+  const{y,m,mn,days}=getMonthData(mOff);const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+  const mT=tasks.filter(t=>{const d=new Date(t.dueDate);return d.getFullYear()===y&&d.getMonth()===m});const mD=mT.filter(t=>t.status==="done").length;const mP=mT.length?Math.round(mD/mT.length*100):0;
+  const updNote=(date,val)=>{const u={...notes,[date]:val};setNotes(u);localStorage.setItem("apex:notes",JSON.stringify(u))};
+  const sdObj=selDay?{date:selDay,num:new Date(selDay+"T12:00:00").getDate(),label:["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][new Date(selDay+"T12:00:00").getDay()],month:new Date(selDay+"T12:00:00").toLocaleString("en-GB",{month:"short"}),isToday:selDay===TODAY}:null;
+  const onDrop=(e,date)=>{e.preventDefault();setDragOver(null);const id=Number(e.dataTransfer.getData("taskId"));if(id)setTasks(p=>p.map(t=>t.id===id?{...t,dueDate:date}:t))};
+  return(<div style={{flex:1,display:"flex",overflow:"hidden"}}>
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+      <div style={{padding:"18px 24px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div><h2 style={{fontSize:20,fontWeight:400,color:C.text,margin:0}}>{mn} <span style={{color:C.textSec,fontWeight:300}}>{y}</span></h2><p style={{fontSize:12,color:C.textSec,margin:"2px 0 0"}}>{mT.length} tasks · {mP}% complete · click any day to open</p></div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button onClick={()=>setMOff(p=>p-1)}style={{width:30,height:30,borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textSec,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><ChevronLeft size={15}/></button>
+          {mOff!==0&&<button onClick={()=>setMOff(0)}style={{padding:"3px 9px",borderRadius:6,border:`1px solid ${C.border}`,background:"transparent",color:C.textSec,cursor:"pointer",fontSize:10,fontFamily:"inherit"}}>This Month</button>}
+          <button onClick={()=>setMOff(p=>p+1)}style={{width:30,height:30,borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textSec,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><ChevronRight size={15}/></button></div></div>
+      <div style={{margin:"0 24px 12px",height:2,background:C.border,borderRadius:2}}><div style={{height:"100%",borderRadius:2,background:C.gold,width:`${mP}%`,transition:"width 0.8s"}}/></div>
+      <div style={{flex:1,padding:"0 24px",display:"flex",flexDirection:"column",gap:4,overflow:"auto"}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>{DOW.map(d=><div key={d}style={{textAlign:"center",fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",fontWeight:600,padding:"3px 0"}}>{d}</div>)}</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+          {days.map((day,idx)=>{const dt=tasks.filter(t=>t.dueDate===day.date);const dn=dt.filter(t=>t.status==="done").length;const isT=day.date===TODAY;const isSel=selDay===day.date;const isDO=dragOver===day.date;
+            return(<div key={idx}
+              onDragOver={e=>{e.preventDefault();if(day.cur)setDragOver(day.date)}}onDragLeave={()=>setDragOver(null)}onDrop={e=>day.cur&&onDrop(e,day.date)}
+              onClick={()=>day.cur&&setSelDay(isSel?null:day.date)}
+              style={{background:isDO?C.goldGlow:isSel?C.goldGlow:isT?"rgba(200,169,81,0.07)":day.cur?C.card:"transparent",border:`1px solid ${isDO?C.gold:isSel?C.gold:isT?C.gold+"40":day.cur?C.border:"transparent"}`,borderRadius:7,padding:"6px 5px",minHeight:72,cursor:day.cur?"pointer":"default",opacity:day.cur?1:0.15,transition:"all 0.15s"}}>
+              <div style={{width:20,height:20,borderRadius:"50%",background:isT?C.gold:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:isT?600:300,color:isT?"#07070F":day.cur?C.text:C.textMut,marginBottom:3}}>{day.num}</div>
+              {day.cur&&dt.length>0&&<><div style={{display:"flex",flexWrap:"wrap",gap:2,marginBottom:3}}>{dt.slice(0,5).map(t=><div key={t.id}style={{width:5,height:5,borderRadius:"50%",background:t.status==="done"?C.green:PRIORITY[t.priority]?.color,opacity:t.status==="done"?0.4:1}}/>)}{dt.length>5&&<span style={{fontSize:7,color:C.textMut}}>+{dt.length-5}</span>}</div><div style={{height:1.5,background:C.border,borderRadius:1}}><div style={{height:"100%",borderRadius:1,background:dn===dt.length?C.green:C.gold,width:`${Math.round(dn/dt.length*100)}%`}}/></div></>}
+              {day.cur&&isDO&&dt.length===0&&<div style={{fontSize:7,color:C.gold,marginTop:2}}>+ drop</div>}
+              {notes[day.date]&&day.cur&&<div style={{fontSize:7,color:C.textMut,marginTop:2}}>✎</div>}
+            </div>)})}
+        </div>
+      </div>
+      <div style={{padding:"10px 24px",borderTop:`1px solid ${C.border}`,display:"flex",gap:20,flexShrink:0}}>
+        {[{l:"Total",v:mT.length},{l:"Complete",v:mD},{l:"Pending",v:mT.length-mD},{l:"Critical",v:mT.filter(t=>t.priority==="CRITICAL").length}].map(s=><div key={s.l}><div style={{fontSize:17,fontWeight:200,color:C.text}}>{s.v}</div><div style={{fontSize:9,color:C.textMut}}>{s.l}</div></div>)}
+      </div>
+    </div>
+    {sdObj&&<DayPanel day={sdObj}tasks={tasks}setTasks={setTasks}notes={notes[selDay]}onNoteChange={val=>updNote(selDay,val)}onClose={()=>setSelDay(null)}/>}
+  </div>)
+}
+
+// ── Year View ─────────────────────────────────────────────────
+const MN=["January","February","March","April","May","June","July","August","September","October","November","December"]
+function YearView({tasks,goals}){
+  const[yr,setYr]=useState(new Date().getFullYear());const[hov,setHov]=useState(null);const cy=new Date().getFullYear();const cm=new Date().getMonth();
+  const yT=tasks.filter(t=>new Date(t.dueDate).getFullYear()===yr);const yD=yT.filter(t=>t.status==="done").length;const yP=yT.length?Math.round(yD/yT.length*100):0;
+  const md=Array.from({length:12},(_,m)=>{const mt=tasks.filter(t=>{const d=new Date(t.dueDate);return d.getFullYear()===yr&&d.getMonth()===m});const d=mt.filter(t=>t.status==="done").length;const p=mt.length?Math.round(d/mt.length*100):0;const dim=new Date(yr,m+1,0).getDate();const act=Array.from({length:dim},(_,i)=>{const date=new Date(yr,m,i+1).toISOString().split("T")[0];return tasks.filter(t=>t.dueDate===date).length});return{m,name:MN[m],tasks:mt,done:d,pct:p,act}});
+  const best=md.reduce((b,m)=>m.tasks.length>0&&m.pct>(b?.pct||0)?m:b,null);const busy=md.reduce((b,m)=>m.tasks.length>b.tasks.length?m:b,{tasks:[],m:0});
+  return(<div style={{flex:1,overflowY:"auto",padding:24,display:"flex",flexDirection:"column",gap:18}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><h2 style={{fontSize:20,fontWeight:400,color:C.text,margin:0}}>Year at a Glance</h2><p style={{fontSize:12,color:C.textSec,margin:"2px 0 0"}}>{yT.length} tasks · {yP}% complete</p></div>
+      <div style={{display:"flex",alignItems:"center",gap:8}}><button onClick={()=>setYr(p=>p-1)}style={{width:30,height:30,borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textSec,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><ChevronLeft size={15}/></button><span style={{fontSize:20,fontWeight:200,color:yr===cy?C.gold:C.text,minWidth:48,textAlign:"center"}}>{yr}</span><button onClick={()=>setYr(p=>p+1)}style={{width:30,height:30,borderRadius:7,border:`1px solid ${C.border}`,background:"transparent",color:C.textSec,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><ChevronRight size={15}/></button></div></div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>{[{l:"Total",v:yT.length,c:C.text},{l:"Completed",v:yD,c:C.green},{l:"Pending",v:yT.length-yD,c:C.orange},{l:"Rate",v:`${yP}%`,c:C.gold}].map(s=><div key={s.l}style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px"}}><div style={{fontSize:20,fontWeight:200,color:s.c}}>{s.v}</div><div style={{fontSize:9,color:C.textMut,marginTop:2}}>{s.l}</div></div>)}</div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>{md.map(({m,name,tasks:mt,done,pct,act})=>{const isCur=yr===cy&&m===cm;const isFut=yr>cy||(yr===cy&&m>cm);return(<div key={m}onMouseEnter={()=>setHov(m)}onMouseLeave={()=>setHov(null)}style={{background:isCur?C.goldGlow:C.card,border:`1px solid ${isCur?C.gold+"50":hov===m?C.borderHi:C.border}`,borderRadius:11,padding:12,transition:"border-color 0.15s",opacity:isFut?0.45:1}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}><div><div style={{fontSize:12,fontWeight:500,color:isCur?C.gold:C.text}}>{name}</div><div style={{fontSize:9,color:C.textMut,marginTop:1}}>{mt.length} tasks</div></div><div style={{fontSize:15,fontWeight:200,color:pct>=80?C.green:pct>=50?C.gold:C.textSec}}>{mt.length>0?`${pct}%`:"—"}</div></div><div style={{display:"flex",gap:1.5,flexWrap:"wrap",marginBottom:8}}>{act.slice(0,31).map((count,i)=><div key={i}style={{width:6,height:6,borderRadius:1.5,background:count===0?C.border:count>=3?C.gold:count>=2?C.gold+"70":C.gold+"40"}}/>)}</div><div style={{height:2,background:C.border,borderRadius:1}}><div style={{height:"100%",borderRadius:1,background:pct>=80?C.green:C.gold,width:`${pct}%`,transition:"width 0.8s"}}/></div><div style={{display:"flex",justifyContent:"space-between",marginTop:7,fontSize:9,color:C.textMut}}><span>{done} done</span><span>{mt.length-done} left</span></div></div>)})}</div>
+    {yT.length>0&&<div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:16}}><div style={{fontSize:9,color:C.textMut,textTransform:"uppercase",letterSpacing:"1px",marginBottom:12}}>Year Insights</div><div style={{display:"flex",gap:24,flexWrap:"wrap"}}>{best&&<div><div style={{fontSize:10,color:C.textSec}}>Best month</div><div style={{fontSize:13,color:C.green,fontWeight:500}}>{best.name} · {best.pct}%</div></div>}{busy.tasks.length>0&&<div><div style={{fontSize:10,color:C.textSec}}>Most active</div><div style={{fontSize:13,color:C.gold,fontWeight:500}}>{MN[busy.m]} · {busy.tasks.length} tasks</div></div>}<div><div style={{fontSize:10,color:C.textSec}}>Goals tracked</div><div style={{fontSize:13,color:C.blue,fontWeight:500}}>{goals.length} active</div></div></div></div>}
+  </div>)
+}
+
+// ── Goals View ────────────────────────────────────────────────
 function GoalsView({goals,setGoals}){
   const[sn,setSn]=useState(false);const[form,setForm]=useState({title:"",category:"financial",deadline:"",vision:""});const[al,setAl]=useState(null);const[exp,setExp]=useState(null);
   const dc=async(goal)=>{setAl(goal.id);const ms=await decomposeGoal({goal});if(ms.length)setGoals(p=>p.map(g=>g.id===goal.id?{...g,milestones:ms}:g));setAl(null)};
@@ -59,8 +271,10 @@ function GoalsView({goals,setGoals}){
   </div>)
 }
 
-function StrategicView({goals}){const q=["Q1 2026","Q2 2026","Q3 2026","Q4 2026","Q1 2027"],CQ="Q2 2026";return(<div style={{flex:1,overflowY:"auto",padding:24,display:"flex",flexDirection:"column",gap:22}}><div><h2 style={{fontSize:20,fontWeight:400,color:C.text,margin:0}}>Strategic Vision</h2><p style={{fontSize:12,color:C.textSec,margin:"3px 0 0"}}>Long-term roadmap · Zenith Rise Capital</p></div><div style={{background:C.goldGlow,border:`1px solid ${C.gold}30`,borderRadius:12,padding:20}}><div style={{fontSize:9,color:C.gold,textTransform:"uppercase",letterSpacing:"1.5px",fontWeight:600,marginBottom:10}}>North Star</div><p style={{fontSize:14,color:C.text,margin:0,lineHeight:1.8,fontWeight:300}}>Build ZRC into the leading geopolitical intelligence and real estate investment advisory practice in Southern Europe — generating €500K+ annual advisory revenue, publishing institutional-grade research, maintaining excellence across all objectives.</p></div><div><div style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:12,fontWeight:600}}>Quarterly Roadmap</div><div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:8}}>{q.map((qr,i)=>{const iC=qr===CQ,iP=i<q.indexOf(CQ);return(<div key={qr}style={{minWidth:150,background:iC?C.goldGlow:C.card,border:`1px solid ${iC?C.gold:C.border}`,borderRadius:10,padding:14,flexShrink:0}}><div style={{fontSize:10,fontWeight:600,color:iC?C.gold:iP?C.textMut:C.textSec,marginBottom:10,textTransform:"uppercase",letterSpacing:"1px"}}>{qr}{iC?" Now":""}</div>{goals.slice(0,3).map(g=><div key={g.id}style={{marginBottom:8}}><div style={{width:"100%",height:2,background:C.border,borderRadius:1,marginBottom:3}}><div style={{height:"100%",borderRadius:1,background:g.color,width:`${iC?g.progress:iP?100:0}%`,transition:"width 1s"}}/></div><div style={{fontSize:9,color:iP?C.textMut:C.textSec}}>{g.title.substring(0,24)}{g.title.length>24?"…":""}</div></div>)}</div>)})}</div></div><div><div style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:12,fontWeight:600}}>OKR Dashboard</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{goals.map(g=>{const cat=CATS[g.category]||CATS.work;return(<div key={g.id}style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:14,display:"flex",alignItems:"center",gap:14}}><ProgressRing progress={g.progress}size={44}stroke={3.5}color={g.color}/><div style={{flex:1,minWidth:0}}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><Tag label={cat.label}color={cat.color}/></div><div style={{fontSize:13,color:C.text,marginBottom:3,fontWeight:500}}>{g.title}</div><div style={{fontSize:11,color:C.textSec}}>{g.milestones?.filter(m=>m.done).length}/{g.milestones?.length} milestones · {new Date(g.deadline).toLocaleDateString("en-GB",{month:"short",year:"numeric"})}</div></div><div style={{fontSize:22,fontWeight:200,color:g.color,flexShrink:0}}>{g.progress}<span style={{fontSize:11,color:C.textSec}}>%</span></div></div>)})}</div></div></div>)}
+// ── Strategic View ────────────────────────────────────────────
+function StrategicView({goals}){const q=["Q1 2026","Q2 2026","Q3 2026","Q4 2026","Q1 2027"],CQ="Q2 2026";return(<div style={{flex:1,overflowY:"auto",padding:24,display:"flex",flexDirection:"column",gap:22}}><div><h2 style={{fontSize:20,fontWeight:400,color:C.text,margin:0}}>Strategic Vision</h2><p style={{fontSize:12,color:C.textSec,margin:"3px 0 0"}}>Long-term roadmap · Zenith Rise Capital</p></div><div style={{background:C.goldGlow,border:`1px solid ${C.gold}30`,borderRadius:12,padding:20}}><div style={{fontSize:9,color:C.gold,textTransform:"uppercase",letterSpacing:"1.5px",fontWeight:600,marginBottom:10}}>North Star</div><p style={{fontSize:14,color:C.text,margin:0,lineHeight:1.8,fontWeight:300}}>Build ZRC into the leading geopolitical intelligence and real estate investment advisory practice in Southern Europe — generating €500K+ annual advisory revenue, publishing institutional-grade research, and maintaining excellence across all objectives.</p></div><div><div style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:12,fontWeight:600}}>Quarterly Roadmap</div><div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:8}}>{q.map((qr,i)=>{const iC=qr===CQ,iP=i<q.indexOf(CQ);return(<div key={qr}style={{minWidth:150,background:iC?C.goldGlow:C.card,border:`1px solid ${iC?C.gold:C.border}`,borderRadius:10,padding:14,flexShrink:0}}><div style={{fontSize:10,fontWeight:600,color:iC?C.gold:iP?C.textMut:C.textSec,marginBottom:10,textTransform:"uppercase",letterSpacing:"1px"}}>{qr}{iC?" Now":""}</div>{goals.slice(0,3).map(g=><div key={g.id}style={{marginBottom:8}}><div style={{width:"100%",height:2,background:C.border,borderRadius:1,marginBottom:3}}><div style={{height:"100%",borderRadius:1,background:g.color,width:`${iC?g.progress:iP?100:0}%`,transition:"width 1s"}}/></div><div style={{fontSize:9,color:iP?C.textMut:C.textSec}}>{g.title.substring(0,24)}{g.title.length>24?"…":""}</div></div>)}</div>)})}</div></div><div><div style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:12,fontWeight:600}}>OKR Dashboard</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{goals.map(g=>{const cat=CATS[g.category]||CATS.work;return(<div key={g.id}style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:14,display:"flex",alignItems:"center",gap:14}}><ProgressRing progress={g.progress}size={44}stroke={3.5}color={g.color}/><div style={{flex:1,minWidth:0}}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><Tag label={cat.label}color={cat.color}/></div><div style={{fontSize:13,color:C.text,marginBottom:3,fontWeight:500}}>{g.title}</div><div style={{fontSize:11,color:C.textSec}}>{g.milestones?.filter(m=>m.done).length}/{g.milestones?.length} milestones · {new Date(g.deadline).toLocaleDateString("en-GB",{month:"short",year:"numeric"})}</div></div><div style={{fontSize:22,fontWeight:200,color:g.color,flexShrink:0}}>{g.progress}<span style={{fontSize:11,color:C.textSec}}>%</span></div></div>)})}</div></div></div>)}
 
+// ── Root ──────────────────────────────────────────────────────
 export default function App(){
   const[view,setView]=useState("today");const[tasks,setTasks]=useState(()=>storage.get("tasks",SAMPLE_TASKS));const[goals,setGoals]=useState(()=>storage.get("goals",SAMPLE_GOALS));
   useEffect(()=>{storage.set("tasks",tasks)},[tasks]);useEffect(()=>{storage.set("goals",goals)},[goals]);
