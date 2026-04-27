@@ -8,7 +8,7 @@ const C = {
 };
 
 export default function AuthGate({ children }) {
-  const [session, setSession] = useState(undefined); // undefined = loading
+  const [session, setSession] = useState(undefined);
   const [email, setEmail]     = useState("");
   const [sent, setSent]       = useState(false);
   const [error, setError]     = useState("");
@@ -20,7 +20,6 @@ export default function AuthGate({ children }) {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // Still checking session
   if (session === undefined) {
     return (
       <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
@@ -30,10 +29,8 @@ export default function AuthGate({ children }) {
     );
   }
 
-  // Authenticated — render the app
   if (session) return children;
 
-  // Login screen
   const sendLink = async () => {
     if (!email.trim()) return;
     setLoading(true); setError("");
@@ -72,7 +69,7 @@ export default function AuthGate({ children }) {
               Magic link sent to <strong style={{ color:C.gold }}>{email}</strong>.
               Click it to sign in — no password needed.
             </div>
-            <button onClick={() => setSent(false)}
+            <button onClick={() => { setSent(false); setEmail(""); }}
               style={{ background:"none", border:`1px solid ${C.border}`, borderRadius:8,
                 color:C.textSec, cursor:"pointer", padding:"8px 14px", fontSize:11,
                 fontFamily:"inherit", marginTop:4 }}>
@@ -93,8 +90,9 @@ export default function AuthGate({ children }) {
               value={email}
               onChange={e => setEmail(e.target.value)}
               onKeyDown={e => e.key === "Enter" && sendLink()}
-              placeholder="luis@zenithrisecapital.com"
+              placeholder="your@email.com"
               autoFocus
+              autoComplete="off"
               style={{ background:C.elevated, border:`1px solid ${C.border}`, borderRadius:8,
                 padding:"11px 14px", fontSize:13, color:C.text, outline:"none",
                 fontFamily:"inherit" }}
