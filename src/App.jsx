@@ -1,8 +1,19 @@
-import{useState,useEffect,useRef}from"react"
-import{Target,Calendar,CalendarDays,BarChart2,Layers,Plus,CheckCircle2,Circle,Zap,X,Sparkles,RefreshCw,Check,ChevronLeft,ChevronRight,Edit3,GripVertical,Trash2,Clock,Tag as TagIcon}from"lucide-react"
-import{generateBriefing,decomposeGoal}from"./lib/api.js"
-import{storage}from"./lib/storage.js"
-import{C,PRIORITY,CATS,TODAY,SAMPLE_TASKS,SAMPLE_GOALS}from"./lib/constants.js"
+import { useState, useEffect, useRef } from "react"
+import {
+  Target, Calendar, CalendarDays, BarChart2, Layers, Plus,
+  CheckCircle2, Circle, Zap, X, Sparkles, RefreshCw, Check,
+  ChevronLeft, ChevronRight, Edit3, GripVertical, Trash2,
+  Clock, Tag as TagIcon, LogOut,
+} from "lucide-react"
+import { generateBriefing, decomposeGoal } from "./lib/api.js"
+import {
+  storage,
+  loadTasksFromCloud, loadGoalsFromCloud,
+  upsertTask, deleteTask, saveGoalsToCloud,
+} from "./lib/storage.js"
+import { C, PRIORITY, CATS, TODAY, SAMPLE_TASKS, SAMPLE_GOALS } from "./lib/constants.js"
+import { supabase } from "./lib/supabase.js"
+
 
 // ── Shared helpers ────────────────────────────────────────────
 function Tag({label,color}){return<span style={{fontSize:10,padding:"2px 7px",borderRadius:4,background:color+"18",color,fontWeight:500,flexShrink:0}}>{label}</span>}
@@ -275,11 +286,138 @@ function GoalsView({goals,setGoals}){
 function StrategicView({goals}){const q=["Q1 2026","Q2 2026","Q3 2026","Q4 2026","Q1 2027"],CQ="Q2 2026";return(<div style={{flex:1,overflowY:"auto",padding:24,display:"flex",flexDirection:"column",gap:22}}><div><h2 style={{fontSize:20,fontWeight:400,color:C.text,margin:0}}>Strategic Vision</h2><p style={{fontSize:12,color:C.textSec,margin:"3px 0 0"}}>Long-term roadmap · Zenith Rise Capital</p></div><div style={{background:C.goldGlow,border:`1px solid ${C.gold}30`,borderRadius:12,padding:20}}><div style={{fontSize:9,color:C.gold,textTransform:"uppercase",letterSpacing:"1.5px",fontWeight:600,marginBottom:10}}>North Star</div><p style={{fontSize:14,color:C.text,margin:0,lineHeight:1.8,fontWeight:300}}>Build ZRC into the leading geopolitical intelligence and real estate investment advisory practice in Southern Europe — generating €500K+ annual advisory revenue, publishing institutional-grade research, and maintaining excellence across all objectives.</p></div><div><div style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:12,fontWeight:600}}>Quarterly Roadmap</div><div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:8}}>{q.map((qr,i)=>{const iC=qr===CQ,iP=i<q.indexOf(CQ);return(<div key={qr}style={{minWidth:150,background:iC?C.goldGlow:C.card,border:`1px solid ${iC?C.gold:C.border}`,borderRadius:10,padding:14,flexShrink:0}}><div style={{fontSize:10,fontWeight:600,color:iC?C.gold:iP?C.textMut:C.textSec,marginBottom:10,textTransform:"uppercase",letterSpacing:"1px"}}>{qr}{iC?" Now":""}</div>{goals.slice(0,3).map(g=><div key={g.id}style={{marginBottom:8}}><div style={{width:"100%",height:2,background:C.border,borderRadius:1,marginBottom:3}}><div style={{height:"100%",borderRadius:1,background:g.color,width:`${iC?g.progress:iP?100:0}%`,transition:"width 1s"}}/></div><div style={{fontSize:9,color:iP?C.textMut:C.textSec}}>{g.title.substring(0,24)}{g.title.length>24?"…":""}</div></div>)}</div>)})}</div></div><div><div style={{fontSize:10,color:C.textMut,textTransform:"uppercase",letterSpacing:"1.2px",marginBottom:12,fontWeight:600}}>OKR Dashboard</div><div style={{display:"flex",flexDirection:"column",gap:10}}>{goals.map(g=>{const cat=CATS[g.category]||CATS.work;return(<div key={g.id}style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:10,padding:14,display:"flex",alignItems:"center",gap:14}}><ProgressRing progress={g.progress}size={44}stroke={3.5}color={g.color}/><div style={{flex:1,minWidth:0}}><div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}><Tag label={cat.label}color={cat.color}/></div><div style={{fontSize:13,color:C.text,marginBottom:3,fontWeight:500}}>{g.title}</div><div style={{fontSize:11,color:C.textSec}}>{g.milestones?.filter(m=>m.done).length}/{g.milestones?.length} milestones · {new Date(g.deadline).toLocaleDateString("en-GB",{month:"short",year:"numeric"})}</div></div><div style={{fontSize:22,fontWeight:200,color:g.color,flexShrink:0}}>{g.progress}<span style={{fontSize:11,color:C.textSec}}>%</span></div></div>)})}</div></div></div>)}
 
 // ── Root ──────────────────────────────────────────────────────
-export default function App(){
-  const[view,setView]=useState("today");const[tasks,setTasks]=useState(()=>storage.get("tasks",SAMPLE_TASKS));const[goals,setGoals]=useState(()=>storage.get("goals",SAMPLE_GOALS));
-  useEffect(()=>{storage.set("tasks",tasks)},[tasks]);useEffect(()=>{storage.set("goals",goals)},[goals]);
-  const VIEWS={today:TodayView,week:WeekView,month:MonthView,year:YearView,goals:GoalsView,strategic:StrategicView};const View=VIEWS[view];
-  return(<div style={{display:"flex",height:"100vh",background:C.bg,color:C.text,fontFamily:"-apple-system,'SF Pro Display','Segoe UI',sans-serif",overflow:"hidden"}}>
-    <style>{"@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input::placeholder,textarea::placeholder{color:#404058}select option{background:#171728}[draggable]{user-select:none}"}</style>
-    <Sidebar view={view}setView={setView}/><View tasks={tasks}setTasks={setTasks}goals={goals}setGoals={setGoals}/></div>)
+export default function App() {
+  const [view, setView]   = useState("today");
+  const [tasks, setTasksRaw] = useState(() => storage.get("tasks", SAMPLE_TASKS));
+  const [goals, setGoalsRaw] = useState(() => storage.get("goals", SAMPLE_GOALS));
+  const [syncing, setSyncing] = useState(false);
+
+  // ── Wrap setters so every change syncs to Supabase ──────────
+  const setTasks = (updater) => {
+    setTasksRaw(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      storage.set("tasks", next);
+
+      // Diff: find added/updated tasks
+      const prevIds = new Set(prev.map(t => String(t.id)));
+      next.forEach(t => upsertTask(t));         // upsert all (cheap, idempotent)
+
+      // Diff: find deleted tasks
+      const nextIds = new Set(next.map(t => String(t.id)));
+      prev.forEach(t => { if (!nextIds.has(String(t.id))) deleteTask(t.id); });
+
+      return next;
+    });
+  };
+
+  const setGoals = (updater) => {
+    setGoalsRaw(prev => {
+      const next = typeof updater === "function" ? updater(prev) : updater;
+      storage.set("goals", next);
+      saveGoalsToCloud(next);
+      return next;
+    });
+  };
+
+  // ── On mount: pull latest data from cloud ───────────────────
+  useEffect(() => {
+    setSyncing(true);
+    Promise.all([loadTasksFromCloud(), loadGoalsFromCloud()])
+      .then(([cloudTasks, cloudGoals]) => {
+        if (cloudTasks) setTasksRaw(cloudTasks);
+        if (cloudGoals) setGoalsRaw(cloudGoals);
+      })
+      .finally(() => setSyncing(false));
+  }, []);
+
+  // ── Sign-out helper in Sidebar ───────────────────────────────
+  const signOut = () => supabase.auth.signOut();
+
+  const VIEWS = {
+    today: TodayView, week: WeekView, month: MonthView,
+    year: YearView, goals: GoalsView, strategic: StrategicView,
+  };
+  const View = VIEWS[view];
+
+  return (
+    <div style={{
+      display: "flex", height: "100vh", background: C.bg, color: C.text,
+      fontFamily: "-apple-system,'SF Pro Display','Segoe UI',sans-serif", overflow: "hidden",
+    }}>
+      <style>{"@keyframes spin{to{transform:rotate(360deg)}}*{box-sizing:border-box}input::placeholder,textarea::placeholder{color:#404058}select option{background:#171728}[draggable]{user-select:none}"}</style>
+
+      {/* Sidebar — add sign-out button */}
+      <SidebarWithSignOut view={view} setView={setView} onSignOut={signOut} syncing={syncing} />
+
+      <View tasks={tasks} setTasks={setTasks} goals={goals} setGoals={setGoals} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// REPLACE Sidebar with this (adds sign-out + sync indicator):
+// ─────────────────────────────────────────────────────────────
+
+function SidebarWithSignOut({ view, setView, onSignOut, syncing }) {
+  const nav = [
+    { id: "today",    icon: Zap,          label: "Today"    },
+    { id: "week",     icon: Calendar,     label: "Week"     },
+    { id: "month",    icon: CalendarDays, label: "Month"    },
+    { id: "year",     icon: BarChart2,    label: "Year"     },
+    { id: "goals",    icon: Target,       label: "Goals"    },
+    { id: "strategic",icon: Layers,       label: "Strategic"},
+  ];
+  return (
+    <div style={{
+      width: 54, background: C.surface, borderRight: `1px solid ${C.border}`,
+      display: "flex", flexDirection: "column", alignItems: "center",
+      padding: "12px 0", gap: 2, flexShrink: 0,
+    }}>
+      <div style={{
+        width: 28, height: 28, borderRadius: 7, background: C.gold,
+        display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14,
+        position: "relative",
+      }}>
+        <span style={{ color: "#07070F", fontWeight: 800, fontSize: 12 }}>A</span>
+        {syncing && (
+          <div style={{
+            position: "absolute", top: -3, right: -3, width: 8, height: 8,
+            borderRadius: "50%", background: "#5090E8",
+            animation: "spin 1s linear infinite",
+          }} />
+        )}
+      </div>
+
+      {nav.map(({ id, icon: Icon, label }) => (
+        <button key={id} onClick={() => setView(id)} title={label} style={{
+          width: 38, height: 38, borderRadius: 9, border: "none",
+          background: view === id ? C.goldGlow : "transparent",
+          color: view === id ? C.gold : C.textMut,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", outline: "none", transition: "all 0.2s",
+        }}>
+          <Icon size={17} />
+        </button>
+      ))}
+
+      <div style={{ flex: 1 }} />
+
+      {/* Sign-out */}
+      <button onClick={onSignOut} title="Sign out" style={{
+        width: 38, height: 38, borderRadius: 9, border: "none",
+        background: "transparent", color: C.textMut,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", marginBottom: 4,
+      }}>
+        <LogOut size={15} />
+      </button>
+
+      <div style={{
+        width: 28, height: 28, borderRadius: "50%",
+        background: C.elevated, border: `1px solid ${C.gold}40`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 11, fontWeight: 700, color: C.gold,
+      }}>L</div>
+    </div>
+  );
 }
