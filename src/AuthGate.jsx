@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "./lib/supabase.js";
+import { supabase, supabaseConfigError } from "./lib/supabase.js";
 
 const C = {
   bg: "#07070F", card: "#111120", elevated: "#171728",
@@ -15,10 +15,26 @@ export default function AuthGate({ children }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    if (supabaseConfigError) return;
+    supabase.auth.getSession()
+      .then(({ data }) => setSession(data.session))
+      .catch(() => setSession(null));
     const { data: listener } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  if (supabaseConfigError) {
+    return (
+      <div style={{ display:"flex", alignItems:"center", justifyContent:"center",
+        height:"100vh", background:C.bg, fontFamily:"-apple-system,'SF Pro Display','Segoe UI',sans-serif" }}>
+        <div style={{ width:380, background:C.card, border:"1px solid #E8505040",
+          borderRadius:16, padding:28, display:"flex", flexDirection:"column", gap:12 }}>
+          <div style={{ fontSize:14, color:"#E85050", fontWeight:600 }}>Configuration error</div>
+          <div style={{ fontSize:12, color:C.textSec, lineHeight:1.6 }}>{supabaseConfigError}</div>
+        </div>
+      </div>
+    );
+  }
 
   if (session === undefined) {
     return (
